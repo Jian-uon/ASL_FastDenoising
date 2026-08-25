@@ -1,0 +1,58 @@
+dataset:
+  root_path: "D:/data/ASL/ASL_denoising_dataset/data"
+  subject_prefix: "sub-"
+  raw_dir: "raw"
+
+asl_denoiser_train_params:
+  max_steps: 500
+  eval_every: 5
+  asl_hw: 128
+  asl_z: 48
+  t1_hw: 128
+  t1_z: 48
+  lr: 0.0003
+  weight_decay: 0.0001
+  # --- v35: v34 backbone (multi-scale tissue cross-attn) + loss redesign ---
+  # Changes vs v34 loss:
+  #   - removed w_bg (background suppression). Backgrounds are now zeroed on the
+  #     ASL inputs in the runner before forward, so the model never has to learn
+  #     to output 0 outside brain — frees that capacity for inside-brain detail.
+  #   - disabled lambda_cos (= 0). Cosine dissimilarity was redundant once
+  #     gradient + SSIM losses were active.
+  #   - re-enabled w_contrast (0 -> 0.3): GM/WM-boundary-weighted L1 puts T1 PV
+  #     prior into the gradient signal directly (in addition to cross-attention).
+  #   - re-enabled w_tv (0 -> 0.1): masked total variation (interior gradients
+  #     only — TV no longer counts the artificial brain-edge gradient).
+  #     Provides a smoothing prior to resist late-stage noise-texture learning.
+  #   - w_anat_roi (T1 reconstruction) set to 0 — t1_recon is None in v34+,
+  #     so this term was dead code anyway.
+  # SURE schedule unchanged from v34 (|SURE| training loss).
+  # Weights chosen so each active term contributes >= ~10% to the total at
+  # trained-state magnitudes (roughly: n2n~0.03, grad~0.05, ssim~0.10,
+  # contrast~0.05, tv~0.005; n2n=baseline 1.0, then weights scale others up).
+  # TV bumped to 0.5 specifically to keep texture-regularisation pressure
+  # late in training (anneal phase) when |SURE| relaxes toward 0.005.
+  # v35e: fresh restart from step 0 with anti-over-smoothing weights.
+  # Final balance: heavier structural priors (grad / contrast), TV bumped from
+  # 0.05 -> 0.2 (some smoothing pressure but not enough to flatten cortex).
+  w_n2n: 0.7
+  w_grad: 0.8
+  w_ssim: 0.2
+  w_contrast: 0.5
+  w_tv: 0.2
+  lambda_cos: 0.0
+  w_anat_roi: 0.0
+  w_seg: 0.0
+  w_sure: 0.02
+  sure_eps: 1.0e-3
+  sure_warmup_steps: 60
+  sure_anneal_start: 200
+  sure_anneal_to: 0.005
+
+data_loading:
+  batch_size: 8
+  num_workers: 2
+  shuffle: true
+  train_ratio: 0.8
+  val_ratio: 0.1
+  test_ratio: 0.1

@@ -1,0 +1,40 @@
+# CIG-Net (ASL_dmvae) — Python dependencies.
+# Target: Tianhe / NVIDIA H100 (sm_90), CUDA 12.1, Python 3.10–3.12.
+#
+# PyTorch is pinned to the CUDA 12.1 wheels below. The +cu121 wheels live on the
+# PyTorch index (NOT PyPI), hence the --extra-index-url line — without it pip says
+# "from versions: none". torch/torchvision MUST stay a matched pair. On a different
+# CUDA, change BOTH the version tags and the index (cu124 / cu128 / cu130 ...).
+# When building mamba-ssm from source, torch still needs to be present first
+# (env/hpc/install_env.sh handles ordering + pins it during the deps/mamba steps).
+
+# --- PyTorch (CUDA 12.1 — torch & torchvision must pair) ---
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch==2.5.1+cu121
+torchvision==0.20.1+cu121
+
+# --- medical imaging / data ---
+monai>=1.3
+nibabel>=5.1
+numpy>=1.24,<2.0          # older code path; pin <2.0 to avoid ABI surprises
+scipy>=1.10
+scikit-image>=0.22
+
+# --- io / utils / logging ---
+PyYAML>=6.0
+tqdm>=4.65
+matplotlib>=3.7
+Pillow>=10.0
+tensorboard>=2.14
+python-docx>=1.1          # only for exporting the paper .docx; harmless otherwise
+python-pptx>=0.6          # only for scripts/create_cignet_nature_ppt.py (figure/slide export)
+
+# --- selective-scan CUDA kernels (REQUIRED for usable GPU speed) ---
+#   `selective_scan_pytorch` (used by BOTH SS2D and the MoSSM encoder) auto-
+#   dispatches to mamba_ssm's CUDA kernel when it is importable and the tensor
+#   is on CUDA (50-100x faster on long sequences); without it the code falls
+#   back to a slow pure-PyTorch loop. These build CUDA extensions (need nvcc +
+#   ninja and torch already installed), so install them SEPARATELY, after torch,
+#   NOT via `pip install -r` — see SERVER_RUN.md §2:
+#       pip install ninja
+#       pip install causal-conv1d>=1.4 mamba-ssm>=2.2 --no-build-isolation

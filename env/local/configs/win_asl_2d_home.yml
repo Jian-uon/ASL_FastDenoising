@@ -1,0 +1,29 @@
+dataset:
+  root_path: "D:/data/ASL/ASL_denoising_dataset/data"
+  subject_prefix: "sub-"
+  raw_dir: "raw"
+
+asl_denoiser_train_params:
+  max_steps: 500
+  eval_every: 5
+  asl_hw: 128
+  asl_z: 48
+  t1_hw: 128
+  t1_z: 48
+  lr: 0.0003
+  weight_decay: 0.0001
+  lambda_cos: 0.05
+  w_n2n: 1.0
+  w_anat_roi: 0.03
+  w_tv: 0.0
+  w_seg: 0.03
+  w_contrast: 0.05
+  contrast_boost: 4.0
+
+data_loading:
+  batch_size: 8
+  num_workers: 2
+  shuffle: true
+  train_ratio: 0.8
+  val_ratio: 0.1
+  test_ratio: 0.1

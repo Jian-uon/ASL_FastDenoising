@@ -1,0 +1,69 @@
+# V35-joint (2026-08-24, user decision): V35 backbone (--use_t1_cross_fusion,
+# FRA aggregator, multi-scale tissue cross-attn) but WITHOUT the stage-1 T1
+# pretrain — T1 encoder/decoder train JOINTLY with the ASL branch from scratch.
+# Deliberate exception to CLAUDE.md §3 "Stage-2 freezes the T1 branch"
+# (explicit user sign-off; joint training historically destabilised both
+# branches — this run is the stability probe).
+#
+# ⚑ DEFAULT ARM = NO-SEG (2026-08-25 user decision): launch with --t1_task recon
+# ⇒ T1 branch is a pure encoder trained only through the cross-attention K-path;
+# t1_seg_logits=None ⇒ the CMF tissue bias AND loss_seg AND loss_contrast are all
+# inert (they share the t1_seg guard) ⇒ training is fully LABEL-FREE (needs only
+# ASL + T1; w_anat_roi=0 keeps the unused recon head lossless). w_seg/w_contrast
+# below only fire in the "+seg" ABLATION arm (--t1_task seg).
+#
+# Changes vs win_asl_2d_home_v35.yml:
+#   - w_seg 0.0 -> 1.0: with no stage-1 pretrain, the T1 branch must learn the
+#     4-class PV segmentation in-loop, otherwise the CMF tissue-similarity bias
+#     tau*cos(seg_i, seg_j) is meaningless. Loss target = gm/wm/csf_asl PV maps
+#     (pv_l1_loss_4cls). 0.1 was tried first (run_v35_joint_seed42, 2026-08-24)
+#     and FAILED: at step 50 the seg panel was still striped garbage with no
+#     25->50 trend while denoising metrics improved — the 10x-diluted seg
+#     gradient loses the shared T1 encoder to the denoising objective. 1.0 =
+#     stage-1's dedicated weight (train_t1.py default); seg loss only reaches
+#     t1_encoder/t1_decoder, so this rebalances the T1 branch without directly
+#     touching the ASL path.
+# Launch flags that must accompany this config (not expressible in yml):
+#   --use_t1_cross_fusion --t1_attn_max_tokens 1024 --t1_task seg
+#   --premask_asl_inputs   (replaces w_bg; default-off since 2026-07)
+#   --best_criterion umse  (composite_v2 removed from the runner)
+#   and NO --init_t1_from / --freeze_t1.
+
+dataset:
+  root_path: "D:/data/ASL/ASL_denoising_dataset/data"
+  subject_prefix: "sub-"
+  raw_dir: "raw"
+
+asl_denoiser_train_params:
+  max_steps: 500
+  eval_every: 5
+  asl_hw: 128
+  asl_z: 48
+  t1_hw: 128
+  t1_z: 48
+  lr: 0.0003
+  weight_decay: 0.0001
+  # Loss recipe inherited unchanged from v35e (see win_asl_2d_home_v35.yml for
+  # the full rationale comments): masked-input regime (no w_bg), lambda_cos off,
+  # contrast + interior-masked TV on, |SURE| with warmup/anneal.
+  w_n2n: 0.7
+  w_grad: 0.8
+  w_ssim: 0.2
+  w_contrast: 0.5
+  w_tv: 0.2
+  lambda_cos: 0.0
+  w_anat_roi: 0.0
+  w_seg: 1.0
+  w_sure: 0.02
+  sure_eps: 1.0e-3
+  sure_warmup_steps: 60
+  sure_anneal_start: 200
+  sure_anneal_to: 0.005
+
+data_loading:
+  batch_size: 8
+  num_workers: 2
+  shuffle: true
+  train_ratio: 0.8
+  val_ratio: 0.1
+  test_ratio: 0.1

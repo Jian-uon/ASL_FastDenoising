@@ -1,0 +1,197 @@
+#!/usr/bin/env python
+"""Frames-sweep reconstruction montage.
+
+For K example subjects, render a [method ROWS x n_frames COLUMNS] grid of
+reconstructions plus the 12-NEX union reference, so that "more frames -> sharper
+recon" is directly visible per subject and per method. This is the qualitative
+complement to the `sweep` PHASE (which plots metrics-vs-frames, not images).
+
+Reuses eval_comparison_table's proven loading + inference so every method runs in
+its NATIVE pipeline on the SAME materialised split and a shared in-brain intensity
+window: ours/ablations via the runner machinery (EMA weights, seg-head-masked
+input), baselines via load_unet/run_unet. Operating-point ckpt = best_umse.pth.
+
+Usage (server, after the 4-config ladder + baselines are trained/selected):
+  python scripts/render_frames_sweep_panel.py --config $CONFIG --split test \
+    --slice_context 0 --n_frames 2 4 6 8 12 --n_subjects 4 \
+    --out_dir $OUT/frames_montage \
+    --ours   $LOGS/cig_vss_ec_csem_bayes_seed42/best_umse.pth \
+    --ours_runner_args "$RA_BAYES" --ours_label "SAGE (Bayes)" \
+    --extra_runner "M1 (g1)::$LOGS/cig_vss_ec_a1_seed42/best_umse.pth::$RA_A1" \
+    --extra_runner "Raw-T1-bil::$LOGS/cig_vss_rawt1_seed42/best_umse.pth::$RA_RAWT1" \
+    --extra_runner "M0 (pv0)::$LOGS/cig_vss_pv0_seed42/best_umse.pth::$RA_PV0" \
+    --vanilla $LOGS/baseline_n2n_seed42/best_umse.pth --include_naive
+
+RA_* are the SAME structural runner-arg fragments as eval_step400.sh (must match
+how each ckpt was trained so it strict-loads). --slice_context MUST match training.
+"""
+from __future__ import annotations
+import argparse
+import os
+import sys
+
+# Make both the repo root and scripts/ importable, then reuse eval_comparison_table.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(_HERE))   # repo root (config/, runners/, utils/)
+sys.path.insert(0, _HERE)                    # scripts/ (eval_comparison_table)
+
+import numpy as np
+import torch
+import matplotlib
+matplotlib.use("Agg", force=True)
+import matplotlib.pyplot as plt
+
+import eval_comparison_table as ect          # loaders + infer (build_runner_from, run_ours_runner, ...)
+
+
+def parse_args():
+    p = argparse.ArgumentParser(description="Frames-sweep reconstruction montage (method x n_frames grid per subject).")
+    p.add_argument("--config", required=True)
+    p.add_argument("--split", default="test", choices=["val", "test"])
+    p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--slice_context", type=int, default=0, help="MUST match training (0=2D, 2=2.5D 5-slice).")
+    p.add_argument("--n_frames", type=int, nargs="+", default=[2, 4, 6, 8, 12],
+                   help="input frame budgets to draw as columns (2..12 spans setA+setB pool).")
+    p.add_argument("--n_subjects", type=int, default=4, help="how many example subjects (one PNG each).")
+    p.add_argument("--max_samples", type=int, default=0, help="0=all val batches; >0 = smoke subset.")
+    p.add_argument("--out_dir", required=True)
+    # ours + ablations (runner machinery). --extra_runner repeatable: 'LABEL::CKPT::RUNNER_ARGS'.
+    p.add_argument("--ours", default=None)
+    p.add_argument("--ours_runner_args", default="")
+    p.add_argument("--ours_label", default="ours")
+    p.add_argument("--extra_runner", action="append", default=[], help="LABEL::CKPT::RUNNER_ARGS (repeatable)")
+    # baselines (PlainUNet / SwinIR loaders); load_unet needs base_ch/depth.
+    p.add_argument("--vanilla", default=None)
+    p.add_argument("--n2self", default=None)
+    p.add_argument("--sup", default=None)
+    p.add_argument("--swinir_sup", default=None)
+    p.add_argument("--concat", default=None)
+    p.add_argument("--include_naive", action="store_true", help="add the naive frame-mean column-set.")
+    p.add_argument("--base_ch", type=int, default=32)
+    p.add_argument("--depth", type=int, default=4)
+    return p.parse_args()
+
+
+def _center_slice(x: torch.Tensor, ctx: int) -> torch.Tensor:
+    """2.5D union carries K=2*ctx+1 z-slices as channels; reduce to the center slice
+    [B,1,H,W] so it matches the models' center-slice predictions. No-op for 2D."""
+    return x if ctx <= 0 else x[:, ctx:ctx + 1]
+
+
+def _save_frames_grid(t1, union, grid, nframes, path, title=""):
+    """One subject: rows = methods, cols = [12-NEX ref | each n_frames]. Shared
+    in-brain window from the reference percentiles (same convention as
+    eval_comparison_table._save_panel). No-op-safe on failure."""
+    try:
+        from scipy.ndimage import binary_fill_holes
+        t1_np = t1[0, 0].cpu().numpy()
+        u_raw = union[0, 0].cpu().numpy()
+        brain = binary_fill_holes((t1_np > 0.05) & (np.abs(u_raw) > 0)).astype(np.float32)
+        u = u_raw * brain
+        ub = u[brain > 0]
+        if ub.size > 0:
+            vmin, vmax = float(np.percentile(ub, 1)), float(np.percentile(ub, 99))
+        else:
+            vmin, vmax = float(u.min()), float(u.max() + 1e-6)
+        if not (vmax > vmin):
+            vmin, vmax = float(u.min()), float(u.max() + 1e-6)
+
+        methods = list(grid.keys())
+        nrow, ncol = len(methods), len(nframes) + 1
+        fig, ax = plt.subplots(nrow, ncol, figsize=(2.4 * ncol, 2.4 * nrow), squeeze=False)
+        for r, name in enumerate(methods):
+            ax[r][0].imshow(u, cmap="gray", vmin=vmin, vmax=vmax)
+            ax[r][0].set_ylabel(name, fontsize=8)
+            if r == 0:
+                ax[r][0].set_title("12-NEX ref", fontsize=8)
+            for c, nf in enumerate(nframes, start=1):
+                pm = grid[name][nf][0, 0].cpu().numpy() * brain
+                ax[r][c].imshow(pm, cmap="gray", vmin=vmin, vmax=vmax)
+                if r == 0:
+                    ax[r][c].set_title(f"{nf} frames", fontsize=8)
+        for a in ax.ravel():
+            a.set_xticks([]); a.set_yticks([])
+        fig.suptitle(f"subject {title}", fontsize=9)
+        fig.tight_layout()
+        fig.savefig(path, dpi=110, bbox_inches="tight")
+        plt.close(fig)
+        print(f"[frames-montage] wrote {path}")
+    except Exception as e:
+        plt.close("all")
+        print(f"[frames-montage] FAILED {path}: {e}")
+
+
+@torch.no_grad()
+def main():
+    args = parse_args()
+    ect.set_seed(args.seed)
+    cfg = ect.Config(args.config)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    os.makedirs(args.out_dir, exist_ok=True)
+    ctx = int(args.slice_context)
+
+    print(f"[1/2] materialising '{args.split}' split (seed={args.seed}, slice_context={ctx}) ...")
+    val_data = ect.materialise_split(cfg, device, split=args.split, max_samples=args.max_samples,
+                                     slice_context=ctx, batch_size=1)
+    K = min(args.n_subjects, len(val_data))
+    if K == 0:
+        raise SystemExit("[frames-montage] empty split — nothing to render.")
+
+    # method(pack, nf, k) -> pred [B,1,H,W] (center slice). Baselines first, ours/ablations after.
+    methods = {}
+    if args.include_naive:
+        methods["naive_mean"] = lambda pack, nf, k: ect.run_naive(
+            ect._presubset_pack(pack, nf, args.seed, k, device), 0, device)
+    if args.vanilla:
+        m = ect.load_unet(args.vanilla, args, device)
+        methods["vanilla_N2N"] = lambda pack, nf, k, m=m: ect.run_unet(
+            m, ect._presubset_pack(pack, nf, args.seed, k, device), 0, device)
+    if args.n2self:
+        m = ect.load_unet(args.n2self, args, device)
+        methods["Noise2Self"] = lambda pack, nf, k, m=m: ect.run_unet(
+            m, ect._presubset_pack(pack, nf, args.seed, k, device), 0, device)
+    if args.sup:
+        m = ect.load_unet(args.sup, args, device)
+        methods["UNet_sup(12NEX)"] = lambda pack, nf, k, m=m: ect.run_unet(
+            m, ect._presubset_pack(pack, nf, args.seed, k, device), 0, device)
+    if args.swinir_sup:
+        m = ect.load_unet(args.swinir_sup, args, device)
+        methods["SwinIR_sup"] = lambda pack, nf, k, m=m: ect.run_unet(
+            m, ect._presubset_pack(pack, nf, args.seed, k, device), 0, device)
+    if args.concat:
+        m = ect.load_unet(args.concat, args, device)
+        methods["PlainUNet_concat"] = lambda pack, nf, k, m=m: ect.run_unet(
+            m, ect._presubset_pack(pack, nf, args.seed, k, device), 0, device)
+    for spec in args.extra_runner:
+        label, ckpt, ra = spec.split("::", 2)
+        runner = ect.build_runner_from(ra, ckpt, label=label)
+        methods[label] = lambda pack, nf, k, r=runner: ect.run_ours_runner(
+            r, pack, nf, args.seed, k, device, apply_input_mask=True)
+    if args.ours:
+        runner = ect.build_runner_from(args.ours_runner_args, args.ours, label=args.ours_label)
+        methods[args.ours_label] = lambda pack, nf, k, r=runner: ect.run_ours_runner(
+            r, pack, nf, args.seed, k, device, apply_input_mask=True)
+
+    if not methods:
+        raise SystemExit("[frames-montage] no methods given (need --ours / --extra_runner / --vanilla / ...).")
+    print(f"[2/2] rendering {K} subjects x {len(methods)} methods x {len(args.n_frames)} frame budgets ...")
+
+    for k in range(K):
+        pack = val_data[k]
+        union = ect.direct_mean_from_frames(
+            torch.cat([pack["setA"].to(device), pack["setB"].to(device)], dim=1))
+        union = _center_slice(union, ctx)
+        t1 = pack["t1"].to(device)
+        sid = pack.get("subject_id", [f"subj{k:02d}"])
+        sid = sid[0] if isinstance(sid, (list, tuple)) else sid
+        grid = {}
+        for name, fn in methods.items():
+            grid[name] = {nf: fn(pack, nf, k) for nf in args.n_frames}
+        _save_frames_grid(t1, union, grid, args.n_frames,
+                          os.path.join(args.out_dir, f"frames_{k:02d}_{sid}.png"), title=str(sid))
+
+    print(f"[frames-montage] done -> {args.out_dir}  ({K} subjects)")
+
+
+if __name__ == "__main__":
+    main()

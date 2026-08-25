@@ -1,0 +1,52 @@
+# HPC twin of env/local/configs/win_asl_2d_home_v35_joint.yml — differs ONLY in
+# root_path + num_workers (see that file for the full rationale).
+#
+# V35-joint (2026-08-24, user decision): V35 backbone (--use_t1_cross_fusion,
+# FRA aggregator, multi-scale tissue cross-attn) WITHOUT the stage-1 T1
+# pretrain — T1 encoder/decoder train JOINTLY with the ASL branch from scratch
+# (signed-off exception to CLAUDE.md §3 frozen-T1).
+# ⚑ DEFAULT ARM = NO-SEG (2026-08-25): submit_v35_joint.sh launches --t1_task
+# recon ⇒ pure T1-encoder joint training, label-free (tissue bias + loss_seg +
+# loss_contrast all inert under recon). w_seg/w_contrast below only fire in the
+# "+seg" ablation arm (T1_TASK=seg; w_seg 1.0 = stage-1's dedicated weight —
+# 0.1 failed the 2026-08-24 probe, seg stayed striped noise at step 50).
+# Launcher: env/hpc/slurm/submit_v35_joint.sh (carries the required flags).
+
+dataset:
+  root_path: "/fs1/home/duancaohui/jian/data/7T_ASL_denoising"   # Tianhe dataset root
+  subject_prefix: "sub-"
+  raw_dir: "raw"
+
+asl_denoiser_train_params:
+  max_steps: 500
+  eval_every: 5
+  asl_hw: 128
+  asl_z: 48
+  t1_hw: 128
+  t1_z: 48
+  lr: 0.0003
+  weight_decay: 0.0001
+  # Loss recipe = v35e, unchanged (see win_asl_2d_home_v35.yml for comments):
+  # masked-input regime (no w_bg), lambda_cos off, contrast + interior TV on,
+  # |SURE| with warmup/anneal. Only w_seg differs from v35e (0 -> 0.1, joint T1).
+  w_n2n: 0.7
+  w_grad: 0.8
+  w_ssim: 0.2
+  w_contrast: 0.5
+  w_tv: 0.2
+  lambda_cos: 0.0
+  w_anat_roi: 0.0
+  w_seg: 1.0
+  w_sure: 0.02
+  sure_eps: 1.0e-3
+  sure_warmup_steps: 60
+  sure_anneal_start: 200
+  sure_anneal_to: 0.005
+
+data_loading:
+  batch_size: 8
+  num_workers: 8       # matches SBATCH --cpus-per-gpu=8 (loader parallelism, throughput only)
+  shuffle: true
+  train_ratio: 0.8
+  val_ratio: 0.1
+  test_ratio: 0.1

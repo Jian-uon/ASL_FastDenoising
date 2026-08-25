@@ -1,0 +1,4 @@
+# Keep shell scripts LF so they run under bash on Linux/WSL (a CRLF \r breaks
+# the shebang/commands with: $'\r': command not found).
+*.sh text eol=lf
+*.py text eol=lf

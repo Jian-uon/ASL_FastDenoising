@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 580" font-family="Arial, Helvetica, sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#333"/>
+    </marker>
+  </defs>
+
+  <style>
+    .box   { rx:7; ry:7; stroke-width:1.3; }
+    .main  { fill:#C6DBEF; stroke:#4A7DB0; }
+    .aux   { fill:#E6E6E6; stroke:#8C8C8C; }
+    .lbl   { font-size:12.5px; fill:#111; text-anchor:middle; }
+    .sub   { font-size:10px;   fill:#444; text-anchor:middle; }
+    .shp   { font-size:9.5px;  fill:#666; text-anchor:start; font-style:italic; }
+    .flow  { fill:none; stroke:#333; stroke-width:1.4; }
+    .skip  { fill:none; stroke:#777; stroke-width:1.2; }
+    .ttl   { font-size:11px; fill:#333; text-anchor:middle; font-weight:bold; }
+  </style>
+
+  <!-- ============ MAIN COLUMN (bottom -> top) ============ -->
+  <!-- input -->
+  <text class="lbl" x="200" y="547" font-weight="bold">ASL frames</text>
+  <text class="sub" x="200" y="561">[B, T, C=5, H, W]  (T noisy 2.5-D frames)</text>
+  <path class="flow" d="M200,533 L200,476" marker-end="url(#arr)"/>
+
+  <!-- per-frame encoder -->
+  <rect class="box main" x="115" y="432" width="170" height="42"/>
+  <text class="lbl" x="200" y="450">Per-frame Encoder</text>
+  <text class="sub" x="200" y="465">shared CNN → global pool</text>
+  <path class="flow" d="M200,432 L200,392" marker-end="url(#arr)"/>
+  <text class="shp" x="206" y="416">[B, T, 64]</text>
+
+  <!-- transformer -->
+  <rect class="box main" x="115" y="346" width="170" height="46"/>
+  <text class="lbl" x="200" y="366">Transformer Encoder ×2</text>
+  <text class="sub" x="200" y="381">frame self-attention (set, perm-equivariant)</text>
+  <path class="flow" d="M200,346 L200,308" marker-end="url(#arr)"/>
+
+  <!-- logvar head -->
+  <rect class="box aux" x="115" y="266" width="170" height="42"/>
+  <text class="lbl" x="200" y="284">LogVar Head</text>
+  <text class="sub" x="200" y="299">Linear 64 → 1</text>
+  <path class="flow" d="M200,266 L200,228" marker-end="url(#arr)"/>
+  <text class="shp" x="206" y="252">log_var [B, T]</text>
+
+  <!-- softmax -->
+  <rect class="box aux" x="115" y="186" width="170" height="42"/>
+  <text class="lbl" x="200" y="204">softmax( − log_var )</text>
+  <text class="sub" x="200" y="219">inverse-variance / BLUE</text>
+  <path class="flow" d="M200,186 L200,141" marker-end="url(#arr)"/>
+  <text class="shp" x="206" y="170">weights [B, T]</text>
+
+  <!-- weighted-sum node -->
+  <circle cx="200" cy="120" r="18" fill="#FFF" stroke="#333" stroke-width="1.5"/>
+  <text class="lbl" x="200" y="125" font-size="16">Σ</text>
+  <text class="sub" x="248" y="105">weighted</text>
+  <text class="sub" x="248" y="117">sum</text>
+
+  <!-- output -->
+  <path class="flow" d="M200,102 L200,52" marker-end="url(#arr)"/>
+  <text class="lbl" x="200" y="40" font-weight="bold">agg  [B, 5, H, W]</text>
+  <text class="sub" x="200" y="26">→ encoder stem  Conv 3×3 (5→32)</text>
+
+  <!-- ============ raw-frame skip into Σ ============ -->
+  <path class="skip" d="M200,510 L58,510 L58,120 L180,120" marker-end="url(#arr)"/>
+  <text class="shp" x="30" y="320" transform="rotate(-90 30,320)">raw frames  [B, T, 5, H, W]</text>
+
+  <!-- ============ dashed inset: Per-frame Encoder internals ============ -->
+  <path class="skip" stroke-dasharray="4 3" d="M285,452 L352,452"/>
+  <rect x="352" y="188" width="188" height="292" rx="9" ry="9"
+        fill="none" stroke="#555" stroke-width="1.2" stroke-dasharray="5 4"/>
+  <text class="ttl" x="446" y="206">Per-frame Encoder</text>
+
+  <!-- inset boxes bottom->top -->
+  <rect class="box main" x="372" y="430" width="148" height="34"/>
+  <text class="lbl" x="446" y="451">Conv 3×3, s2 (5→32)</text>
+
+  <path class="flow" d="M446,430 L446,404" marker-end="url(#arr)"/>
+  <rect class="box main" x="372" y="370" width="148" height="34"/>
+  <text class="lbl" x="446" y="391">Conv 3×3, s2 (32→64)</text>
+
+  <path class="flow" d="M446,370 L446,344" marker-end="url(#arr)"/>
+  <rect class="box aux" x="372" y="310" width="148" height="34"/>
+  <text class="lbl" x="446" y="331">AdaptiveAvgPool → 1×1</text>
+
+  <path class="flow" d="M446,310 L446,284" marker-end="url(#arr)"/>
+  <rect class="box aux" x="372" y="250" width="148" height="34"/>
+  <text class="lbl" x="446" y="271">flatten → [B·T, 64]</text>
+  <path class="flow" d="M446,250 L446,222" marker-end="url(#arr)"/>
+  <text class="sub" x="446" y="236">per-frame 64-D descriptor</text>
+</svg>
