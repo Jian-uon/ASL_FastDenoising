@@ -33,3 +33,14 @@ val_images/
 # Python env
 .venv/
 *.egg-info/
+
+# Patent drafts — LOCAL ONLY, never committed (2026-08-26).
+# The patent is not yet filed and this repo is public, so committing these would
+# be a novelty-destroying public disclosure. docs/v35_paper/README.md records the
+# rule as "patent-first: file before publishing". They were purged from history
+# with git filter-repo; keep your local copies outside version control.
+docs/patent_draft.md
+docs/v35_patent_version.md
+
+# Baidu Sync temp files (this working copy lives inside BaiduSyncdisk)
+*.baiduyun.uploading.cfg

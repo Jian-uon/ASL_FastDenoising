@@ -26,10 +26,16 @@ in the default arm, **no labels at all**.
 | Submitted CCR2026 abstract | [docs/v35_paper/ccr2026_abstract_en.txt](docs/v35_paper/ccr2026_abstract_en.txt) |
 | Metric definitions + selection philosophy | [docs/validation_metrics.md](docs/validation_metrics.md) |
 | Architecture & tensor-dimension flow of this conv family | [docs/v37_legacy.md](docs/v37_legacy.md) |
-| V35 design/status record + known code faults | [docs/v35_patent_version.md](docs/v35_patent_version.md) |
-| Patent draft (needs a claim-order rewrite — see the V35 record) | [docs/patent_draft.md](docs/patent_draft.md) |
+| V35 design/status record + known code faults | `docs/v35_patent_version.md` — **local only, not in this repo** (see below) |
+| Patent draft (needs a claim-order rewrite — see the V35 record) | `docs/patent_draft.md` — **local only, not in this repo** (see below) |
 | Prior art / competitor positioning | [docs/related_work.md](docs/related_work.md) |
 | Historical material (may contain stale links) | [docs/archive/](docs/archive/) |
+
+> **The two patent documents are not in this repo.** `docs/patent_draft.md` and
+> `docs/v35_patent_version.md` are gitignored and were purged from git history on
+> 2026-08-26: the patent is unfiled and this repo is public, so committing them would be a
+> novelty-destroying disclosure. They still exist in local working copies — ask the author
+> if you need the V35 design/status record or the claim structure.
 
 ## Two rules that keep biting
 
