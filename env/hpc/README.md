@@ -25,12 +25,17 @@ cd ASL_FastDenoising
 # 2. environment: the existing `asl-mamba` env is a SUPERSET of what this line needs.
 #    Reuse it — env/hpc/env.sh already defaults to ENVNAME=asl-mamba.
 source activate asl-mamba
-python -c "import torch, monai, nibabel; print(torch.__version__, torch.cuda.is_available())"
-#    Only build a fresh env if that fails:  sh env/hpc/install_env.sh   (on a GPU node)
+python -c "import torch, monai, nibabel; print(torch.__version__)"
+#    On the LOGIN NODE this is an import check only. Do NOT test
+#    torch.cuda.is_available() here — login nodes (th-hpc4-ln0) have no GPU, so it
+#    prints False and that is expected. CUDA is verified on the compute node: every
+#    job script runs `nvidia-smi -L`, so the card shows up at the top of the .out.
+#    Only build a fresh env if the imports fail:  sh env/hpc/install_env.sh  (GPU node)
 
-# 3. check the data path
+# 3. check the data path AND that the data is actually there
 grep root_path env/hpc/configs/server_v35_joint.yml
 #    -> /fs1/home/duancaohui/jian/data/7T_ASL_denoising
+ls /fs1/home/duancaohui/jian/data/7T_ASL_denoising/*/raw/asldata_diff.nii.gz | wc -l   # expect 329
 
 # 4. confirm you have the current code (this flag does not exist in older clones)
 python runners/asl_t1_guided_runner_dmvae_n2n.py --help | grep window_fusion_levels
