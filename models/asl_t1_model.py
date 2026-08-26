@@ -326,6 +326,27 @@ class ASLT1Denoiser(nn.Module):
         # Must match the --t1_task used to pretrain --init_t1_from, so the
         # frozen t1_decoder head loads strict.
         t1_task: str = "recon",
+        # 2026-08-25 (no-seg default arm): under t1_task='recon' with w_anat_roi=0 the
+        # T1 decoder head is DEAD WEIGHT — 0.67M params (16% of the model) that receive
+        # zero loss gradient and whose output is discarded. use_t1_decoder=False drops
+        # it entirely (construction + forward). The T1 ENCODER is untouched: it still
+        # feeds CMF0/CMF1 as the attention K-path, which is T1's only route into the
+        # ASL branch in this arm. Must stay True for t1_task='seg' (the CMF tissue
+        # bias, loss_seg and the pre-mask brain mask all read t1_seg_logits).
+        use_t1_decoder: bool = True,
+        # 2026-08-26 multi-scale window cross-fusion at the decoder's fine scales
+        # (docs/multiscale_window_design.md). The coarse scales keep CMF0/CMF1;
+        # these add the SAME guidance at the feature's own resolution, bounded by
+        # ws x ws windows instead of by pooling. Q=ASL, K=T1, V=ASL unprojected =>
+        # the fused output is a convex combination of ASL values (maximum
+        # principle), so T1 steers the averaging but injects no content.
+        # window_fusion_levels=0 does not build the modules at all => bit-exact
+        # equality with the pre-2026-08-26 arch, and old checkpoints still load.
+        window_fusion_levels: int = 0,
+        window_size: int = 8,
+        window_heads: int = 4,
+        window_gate_init: float = -3.0,
+        window_k_source: str = "t1",   # 't1' = anatomy-grouped; 'asl' = T1-free control
         **_kwargs,  # absorbs deprecated args
     ) -> None:
         super().__init__()
@@ -374,6 +395,17 @@ class ASLT1Denoiser(nn.Module):
         self.t1_task = str(t1_task)
         if self.t1_task not in ("seg", "recon"):
             raise ValueError(f"t1_task must be 'seg' or 'recon', got {t1_task!r}")
+        self.window_fusion_levels = int(window_fusion_levels)
+        self.window_k_source = str(window_k_source)
+        if self.window_fusion_levels > 0 and self.window_k_source == "t1" and bool(no_t1_branch):
+            raise ValueError("window_fusion_levels>0 with window_k_source='t1' needs the T1 "
+                             "encoder (it supplies the attention keys); use "
+                             "window_k_source='asl' with no_t1_branch.")
+        self.use_t1_decoder = bool(use_t1_decoder)
+        if self.t1_task == "seg" and not self.use_t1_decoder:
+            raise ValueError("t1_task='seg' needs the T1 decoder (it produces the 4-class "
+                             "PV logits consumed by the CMF tissue bias / loss_seg / "
+                             "input pre-mask); use_t1_decoder=False is recon-only.")
         self.use_tabs = bool(use_tabs) and self.use_mossm_encoder
         if self.t1_task == "recon":
             # No PV-seg logits to drive TABS scan; recon head is 1-ch.
@@ -697,6 +729,11 @@ class ASLT1Denoiser(nn.Module):
                 skip_dropout=0.3,
                 use_wavelet=use_wavelet,
                 use_rgsf=False,  # noise-var RGSF removed 2026-06-21
+                window_fusion_levels=self.window_fusion_levels,
+                window_size=int(window_size),
+                window_heads=int(window_heads),
+                window_gate_init=float(window_gate_init),
+                window_k_source=self.window_k_source,
             )
             self.naf_decoder = None
         # Legacy attribute alias: scripts and ckpts may probe self.cross_fusion.
@@ -704,11 +741,13 @@ class ASLT1Denoiser(nn.Module):
         # Expose None so `cross_fusion is None` checks still behave correctly
         # (the v42-default branch in eval scripts depends on this).
         self.cross_fusion = None
-        # T1 decoder: 4-channel head = GM/WM/CSF/BG logits (PV segmentation only).
-        # No T1 reconstruction — full capacity goes to segmentation.
+        # T1 decoder: 4-channel head = GM/WM/CSF/BG logits (PV segmentation).
         # The cross-attention transfers tissue semantics to the ASL branch.
+        # Dropped entirely when use_t1_decoder=False (the no-seg default arm, where it
+        # is dead weight) or no_t1_branch — see the use_t1_decoder kwarg comment.
         t1_dec_out_ch = 1 if self.t1_task == "recon" else 4
-        self.t1_decoder = (None if self.no_t1_branch else ConvDecoderWithSkips2D(
+        self.t1_decoder = (None if (self.no_t1_branch or not self.use_t1_decoder)
+                           else ConvDecoderWithSkips2D(
             in_ch=bottleneck_ch, out_ch=t1_dec_out_ch, out_hw=t1_hw,
             base_ch=base_ch, depth=depth,
             final_activation=None,
@@ -880,7 +919,27 @@ class ASLT1Denoiser(nn.Module):
         )
         # Detail skips, ordered high-res-last: [skip_64, skip_128] for depth=4.
         asl_skips_detail = list(reversed(asl_skips[: depth - 2]))
-        return self.asl_decoder(feat_l1, asl_skips_detail)
+        # Same ordering for the T1 side; consumed only by the window fusions.
+        t1_skips_detail = (list(reversed(t1_skips[: depth - 2]))
+                           if t1_skips is not None else None)
+        return self.asl_decoder(feat_l1, asl_skips_detail,
+                                t1_skips_detail=t1_skips_detail,
+                                tissue_seg=head_tissue_seg)
+
+    def window_stats(self) -> Dict[str, float]:
+        """Per-level window-fusion probes from the most recent forward:
+        gate = sigmoid(a) (how much guidance the model asked for), entropy (ln N
+        == uniform averaging, i.e. grouping has NOT been learnt), and delta =
+        ||x'-x||/||x||. Empty when window_fusion_levels=0."""
+        out: Dict[str, float] = {}
+        dec = getattr(self, "asl_decoder", None)
+        fusions = getattr(dec, "window_fusions", None) if dec is not None else None
+        if fusions is None:
+            return out
+        for i, m in enumerate(fusions):
+            for k, v in getattr(m, "last_stats", {}).items():
+                out[f"wf{i}_{k}"] = v
+        return out
 
     def _route_encoder_input(
         self, agg: Tensor, t1: Tensor, t1_skips: list
@@ -971,6 +1030,12 @@ class ASLT1Denoiser(nn.Module):
             # fsl/rawt1 conditioning: the T1 seg branch is INERT (external/raw-T1 PV,
             # T1-free decoder, loss/brain mask = t1>thr, no gate) → skip it entirely.
             t1_feat_map = t1_skips = t1_seg_logits = t1_recon_out = None
+        elif self.t1_decoder is None:
+            # No-seg default arm: T1 ENCODER only. Its features are the CMF0/CMF1
+            # K-path (T1's sole route into the ASL branch); the recon head was
+            # dropped as dead weight (use_t1_decoder=False).
+            t1_feat_map, _, t1_skips = self.t1_encoder(t1)
+            t1_seg_logits = t1_recon_out = None
         else:
             t1_feat_map, _, t1_skips = self.t1_encoder(t1)
             t1_dec_out = self.t1_decoder(t1_feat_map, t1_skips)  # [B,4,H,W] seg or [B,1,H,W] recon
@@ -1115,6 +1180,9 @@ class ASLT1Denoiser(nn.Module):
             t1 = torch.zeros_like(t1)
         if self.no_t1_branch:                  # inert T1 seg branch skipped (see forward())
             t1_feat_map = t1_skips = t1_seg_logits = t1_recon_out = None
+        elif self.t1_decoder is None:          # no-seg arm: encoder-only (see forward())
+            t1_feat_map, _, t1_skips = self.t1_encoder(t1)
+            t1_seg_logits = t1_recon_out = None
         else:
             t1_feat_map, _, t1_skips = self.t1_encoder(t1)
             t1_dec_out = self.t1_decoder(t1_feat_map, t1_skips)     # [B,4,H,W] seg or [B,1,H,W] recon

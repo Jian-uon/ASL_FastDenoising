@@ -25,6 +25,7 @@
 #   git pull                                  # config/scripts must be pushed first
 #   yhbatch env/hpc/slurm/submit_v35_joint.sh
 # Knobs: SEED=1 | MAX_STEPS=500 | EVAL_EVERY=5 | SAVE_EVERY=50 | EXTRA="--resume"
+#        WIN_LEVELS=2 WIN_K=t1|asl   window cross-fusion arms A1 / A3 (see below)
 set -eo pipefail
 
 REPO=${REPO:-/fs1/home/duancaohui/jian/projects/ASL_FastDenoising}   # <-- MUST be its own clone, separate from ASL_dmvae
@@ -48,10 +49,28 @@ EXTRA="${EXTRA:-}"
 # gets a _seg suffix so the two arms never clobber each other).
 T1_TASK=${T1_TASK:-recon}
 STAG=$([ "$T1_TASK" = seg ] && echo "_seg" || echo "")
+# Multi-scale window cross-fusion (2026-08-26, docs/multiscale_window_design.md).
+# WIN_LEVELS=0 (default) builds nothing -> bit-exactly the pre-2026-08-26 arch, so
+# existing runs and ckpts are unaffected. 2 = equip 64x64 + 128x128, 1 = 128x128 only.
+# WIN_K picks the attention KEY source:
+#   t1  = anatomy-grouped cross-attention                   -> arm A1 (main)
+#   asl = self-attention control, fine scales stay T1-free  -> arm A3
+# A1 minus A3 is the net effect of anatomical guidance at the fine scales: same
+# module, same parameter count, one flag apart. Q=ASL, V=ASL-unprojected either way,
+# so the fused output stays a convex combination of ASL values.
+WIN_LEVELS=${WIN_LEVELS:-0}
+WIN_K=${WIN_K:-t1}
+if [ "$WIN_LEVELS" -gt 0 ]; then
+  WIN_FLAGS="--window_fusion_levels $WIN_LEVELS --window_k_source $WIN_K"
+  WTAG="_win${WIN_LEVELS}${WIN_K}"
+else
+  WIN_FLAGS=""
+  WTAG=""
+fi
 # best-ckpt gate: keep the runner default (best_min_step=-1 -> falls back to
 # sure_anneal_start=200 from the config), same as the local probe.
 
-echo "=== [v35_joint] seed=$SEED max_steps=$MAX_STEPS eval_every=$EVAL_EVERY t1_task=$T1_TASK (FRA + joint T1$STAG, no stage-1) ==="
+echo "=== [v35_joint] seed=$SEED max_steps=$MAX_STEPS eval_every=$EVAL_EVERY t1_task=$T1_TASK win=${WIN_LEVELS}/${WIN_K} (FRA + joint T1$STAG, no stage-1) ==="
 yhrun torchrun --nnodes=1 --nproc_per_node=1 --master_port="$MASTER_PORT" $RUNNER \
   --config "$CONFIG" --exp "$EXP" --base_ch 32 --depth 4 \
   --use_t1_cross_fusion --t1_attn_max_tokens 1024 --t1_task $T1_TASK \
@@ -60,6 +79,7 @@ yhrun torchrun --nnodes=1 --nproc_per_node=1 --master_port="$MASTER_PORT" $RUNNE
   --max_steps "$MAX_STEPS" --eval_every "$EVAL_EVERY" \
   --early_stop_patience 20 --early_stop_min_evals 60 \
   --best_criterion umse --save_per_metric_best \
-  --seed "$SEED" --name run_v35_joint${STAG}_seed$SEED $EXTRA
+  $WIN_FLAGS \
+  --seed "$SEED" --name run_v35_joint${STAG}${WTAG}_seed$SEED $EXTRA
 
-echo "[v35_joint] done -> $EXP/logs/run_v35_joint${STAG}_seed$SEED"
+echo "[v35_joint] done -> $EXP/logs/run_v35_joint${STAG}${WTAG}_seed$SEED"

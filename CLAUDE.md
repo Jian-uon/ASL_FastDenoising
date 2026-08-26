@@ -88,7 +88,8 @@ T1  ──► T1  ConvEncoder2D ──────────────┘─
 Code: `FrameReliabilityAggregator` [blocks.py:479](models/blocks.py#L479) · `CrossModalFusion`
 [blocks.py:684](models/blocks.py#L684) · `T1GuidedCoarseHead` [blocks.py:818](models/blocks.py#L818)
 · `ASLDetailDecoder` [blocks.py:1038](models/blocks.py#L1038). Selected by `--use_t1_cross_fusion`.
-~4.18M params.
+**3.52M params** in the default no-seg arm — 4.18M when the T1 decoder head is built
+(`--t1_task seg`, `w_anat_roi > 0`, or `--keep_t1_decoder`).
 
 ### Default arm: NO-SEG (2026-08-25)
 
@@ -100,12 +101,26 @@ share the same guard). `T1_TASK=seg` re-enables the **`+seg` ablation arm** (`w_
 `w_seg=0.1` was tried first and failed — the diluted gradient loses the shared T1 encoder to the
 denoising objective and the seg stayed striped noise).
 
+**Dead weight removed (2026-08-25).** Under `recon` with `w_anat_roi=0` the T1 *decoder* head got
+zero gradient and its output was discarded, and `--premask_asl_inputs` re-ran the entire T1 branch
+every step only to throw that 1-channel output away (the soft brain mask needs the 4-class seg
+head). Both are gone: the runner now builds the model with `use_t1_decoder=False` (**4.18M → 3.52M
+params, −16%**) and the pre-mask falls straight through to `t1 > 0.05` in `recon` mode. `asl_recon`
+is **bit-identical** (verified against the old arch with shared weights); the T1 **encoder** is
+untouched — it is still the CMF0/CMF1 K-path. The head is auto-kept when `--t1_task seg` or
+`w_anat_roi > 0`, and `--keep_t1_decoder` forces it back (only needed for the T1-recon val panel);
+`t1_task='seg'` + `use_t1_decoder=False` raises. Pre-change checkpoints still `--resume`:
+`t1_decoder.*` keys are dropped with a log line, while any *other* unexpected key still fails
+loudly ([runner `_filter_ckpt_state`](runners/asl_t1_guided_runner_dmvae_n2n.py#L1523)). Note the
+param-init RNG stream shifts, so a fresh `--seed 42` run is no longer step-for-step comparable to
+pre-change runs.
+
 ### Constraints — status as of 2026-08-25
 
 | Constraint | Status |
 |---|---|
-| **V=ASL** (T1 may route attention but not inject pixel content) | ⚑ **UNDER REVISION.** User decision 2026-08-25: the task is *acceleration + denoising*, and **partial T1 injection is acceptable**. The planned mechanism is **BAI** (§7): a bounded, measurable injection channel where `α_max=0` degenerates exactly to strict V=ASL. Do not silently remove the invariant — make injection an explicit, swept parameter. |
-| Decoder fine scales T1-free | Same revision applies (BAI injects at 64/128). `α_max=0` restores it. |
+| **V=ASL** (T1 may route attention but not inject pixel content) | **HOLDS — and is now STRUCTURAL, not a convention** (2026-08-26). The fine scales gained [multi-scale window cross-fusion](docs/multiscale_window_design.md): `Q=ASL, K=T1, V=ASL unprojected`, no output projection, gate `g=σ(a)∈(0,1)`. The fused output is therefore a **convex combination** of the ASL values inside each window — a maximum principle `min_win(x) ≤ x' ≤ max_win(x)`, locked by `tests/test_window_fusion.py`. T1 decides *what gets averaged with what* and cannot contribute content. Adding a `W_v` or output projection would silently destroy this. Injection-style designs (BAI) were considered and **dropped** — see the design doc §6. |
+| Decoder fine scales T1-free | ⚑ **RELAXED, deliberately** (2026-08-26). `ASLDetailDecoder` takes T1 detail skips when `--window_fusion_levels > 0`; at 0 the modules are not constructed and the decoder cannot see T1 at the signature level (bit-exact to the older arch, old ckpts load). Because V=ASL is structural here, this does **not** open a content path — but the mismatched-T1 / E0.3-lesion battery in §6 is still an `--window_fusion_levels 0` measurement and must be re-run per arm. Watch **over-smoothing** (lapvar / EFC), not leakage: the module can only average. |
 | Best ckpt / early-stop never use L1, `psnr_ref`, `psnr_b` | **HOLDS — do not violate.** |
 | Single-direction N2N (only set_a through the model; no symmetric/round-trip losses on B) | **HOLDS.** |
 | No clean-GT loss term | **HOLDS.** Anything supervising against the 12-NEX union is diagnostic only, weight 0. |
@@ -193,14 +208,22 @@ needs to be completed (`--resume`) before the comparison is final.
    is the attention-K path — a known inertness pattern in this codebase. Compare the same
    checkpoint under T1-zeroed / T1-permuted inference against a PlainUNet-N2N baseline. If T1 is
    effectively dormant, the "anatomical guidance" story is empty regardless of metrics.
-3. **BAI — Bounded Anatomical Injection** (the planned method contribution, per the 2026-08-25
-   direction change). T1 detail-branch features are injected into the decoder at 64/128 through a
-   bounded gate `α_s = α_max · sigmoid(a_s)`, `a_s` init −4 (≈no injection at start), with the
-   injection ratio `ρ_s = ‖α_s⊙proj(r_s)‖ / ‖x_s‖` logged per step. Sweep
-   `α_max ∈ {0, 0.05, 0.1, 0.2, 0.5, 1.0}` to produce a **performance-vs-fidelity Pareto curve**
-   (CNR & uMSE vs leakage). `α_max=0` is bit-exactly the current model — a free ablation baseline.
-   Expected risk: CNR improves while uMSE worsens (sharpening hallucination) — that split is
-   itself the paper's finding.
+3. **Multi-scale window cross-fusion** (the method contribution) — **implemented and smoke-tested
+   2026-08-26**; spec, measured constants and arms in
+   **[docs/multiscale_window_design.md](docs/multiscale_window_design.md)**. The coarse scales keep
+   CMF0/CMF1 (global, 16²/32²); the decoder's 64²/128² gain the same tissue-guided attention *at the
+   feature's own resolution*, bounded by `ws×ws` windows instead of by pooling — pooling to a fixed
+   token budget would demote both fine levels to the 32² guidance resolution CMF1 already has, and
+   32² cannot resolve a 1–2 px cortical ribbon. `Q=ASL, K=T1, V=ASL unprojected` ⇒ convex combination
+   ⇒ V=ASL is structural (§3). +17.2K params (+0.49%), +47% GPU step time but only ~+7% wall clock
+   (training is loader-bound). Flags: `--window_fusion_levels {0,1,2} --window_size --window_k_source
+   {t1,asl}`; `0` builds nothing (bit-exact old arch, old ckpts load). **Runs to do:** A1 (`2 t1`,
+   main), A3 (`2 asl`, the T1-free control — *A1 − A3 is the net effect of anatomical guidance*, and
+   it subsumes open question 2), A4 (`1`, cheapest). Watch `window/wf*_entropy` in TB: pinned at
+   ln(ws²) means the grouping never got learnt and the module is a box blur. Risk profile is
+   **over-smoothing, not hallucination** — this module can only average, so arbitrate on uMSE with
+   lapvar/EFC as the guard, not on leakage. Injection-style designs (BAI) were specced and dropped:
+   [docs/wavelet_bai_design.md](docs/wavelet_bai_design.md) (superseded).
 4. **Baselines to train:** PlainUNet-N2N (doubles as the no-T1 lower bound), SwinIR-N2N,
    Nb2Nb/N2V, naive T1-concat (needs a small conv-path fix), plus classical BM3D/AONLM and plain
    temporal averaging (eval-only).

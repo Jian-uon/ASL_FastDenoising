@@ -665,6 +665,34 @@ def parse_args():
                         "used for --init_t1_from. 'recon' = T1 autoencoder (1-ch head, "
                         "appearance features, DEFAULT); 'seg' = 4-class PV segmentation. "
                         "Sizes the frozen t1_decoder head so it loads strict.")
+    p.add_argument("--window_fusion_levels", type=int, default=0, choices=[0, 1, 2],
+                   help="Multi-scale window cross-fusion on the decoder's fine scales, "
+                        "counted from the finest down. 0 = off (modules are not built; "
+                        "bit-exact to the old arch). 1 = 128x128 only. 2 = 64x64 + 128x128. "
+                        "Q=ASL K=T1 V=ASL-unprojected, so the fused output is a convex "
+                        "combination of ASL values. See docs/multiscale_window_design.md.")
+    p.add_argument("--window_size", type=int, default=8,
+                   help="Attention window ws for --window_fusion_levels. Cost per level is "
+                        "(H*W/ws^2) windows x ws^4 pairs; ws=8 at 128x128 costs the same as "
+                        "the existing 32x32 global CMF1.")
+    p.add_argument("--window_heads", type=int, default=4,
+                   help="Attention heads in the window fusion (halved until it divides the "
+                        "channel count).")
+    p.add_argument("--window_gate_init", type=float, default=-3.0,
+                   help="Gate logit init; g = sigmoid(a). -3.0 => g ~ 0.047 (~2 pct feature "
+                        "perturbation at init). Do NOT set a clamped 0 gate: the attention "
+                        "params would receive exactly zero gradient and never train.")
+    p.add_argument("--window_k_source", type=str, default="t1", choices=["t1", "asl"],
+                   help="Attention KEY source. 't1' = anatomy-grouped cross-attention. "
+                        "'asl' = self-attention control: the decoder stays T1-free and the "
+                        "run answers 'is the gain from anatomy, or just from multi-scale "
+                        "non-local averaging?'. Same module, same params either way.")
+    p.add_argument("--keep_t1_decoder", action="store_true",
+                   help="Keep the T1 decoder head under --t1_task recon. By DEFAULT it is "
+                        "dropped (0.67M params, ~16 pct of the model): with w_anat_roi=0 it "
+                        "gets zero gradient and its output is unused, while the T1 encoder "
+                        "still feeds CMF0/CMF1. Auto-kept when --t1_task seg or "
+                        "w_anat_roi>0. Set this only to restore the T1-recon val panel.")
     # v42 sub-components (default ON when --use_mossm_encoder; can be disabled
     # individually for ablation studies — see docs/v42_design_rationale.md)
     p.add_argument("--no_tabs", action="store_true",
@@ -1153,6 +1181,17 @@ class Runner:
                 "To re-run the v2 line, restore it from git history before this commit.")
 
         tp = self.cfg.asl_denoiser_train_params
+        # No-seg arm (2026-08-25): build the T1 decoder head only if something actually
+        # consumes it — seg logits (CMF tissue bias / loss_seg / soft pre-mask), a
+        # non-zero w_anat_roi T1-recon term, or an explicit --keep_t1_decoder.
+        _t1_task = str(getattr(args, "t1_task", "seg"))
+        _keep_t1_dec = (_t1_task == "seg"
+                        or float(getattr(tp, "w_anat_roi", 0.0)) > 0.0
+                        or bool(getattr(args, "keep_t1_decoder", False)))
+        if not _keep_t1_dec:
+            logging.info("[arch] t1_task=recon + w_anat_roi=0 -> T1 decoder head DROPPED "
+                         "(dead weight: zero grad, output unused). T1 encoder kept as the "
+                         "CMF K-path. --keep_t1_decoder restores it.")
         denoiser_kwargs = dict(
             asl_hw=int(tp.asl_hw),
             t1_hw=int(tp.t1_hw),
@@ -1229,6 +1268,12 @@ class Runner:
             repro_desc_dim=int(getattr(args, "repro_desc_dim", 8)),
             slice_context=int(getattr(args, "slice_context", 0)),
             t1_task=str(getattr(args, "t1_task", "seg")),
+            use_t1_decoder=bool(_keep_t1_dec),
+            window_fusion_levels=int(getattr(args, "window_fusion_levels", 0)),
+            window_size=int(getattr(args, "window_size", 8)),
+            window_heads=int(getattr(args, "window_heads", 4)),
+            window_gate_init=float(getattr(args, "window_gate_init", -3.0)),
+            window_k_source=str(getattr(args, "window_k_source", "t1")),
             zero_t1=bool(getattr(args, "zero_t1", False)),
             pv_mode=str(getattr(args, "pv_mode", "real")),
             naive_t1_concat=bool(getattr(args, "naive_t1_concat", False)),
@@ -1497,15 +1542,37 @@ class Runner:
         n = 0
         for p in m.t1_encoder.parameters():
             p.requires_grad = False; n += 1
-        for p in m.t1_decoder.parameters():
-            p.requires_grad = False; n += 1
+        if m.t1_decoder is not None:
+            for p in m.t1_decoder.parameters():
+                p.requires_grad = False; n += 1
         logging.info(f"Froze {n} T1-branch parameters (t1_encoder + t1_decoder).")
+
+    def _filter_ckpt_state(self, sd: Dict[str, Tensor], own, what: str) -> Dict[str, Tensor]:
+        """Drop ckpt keys the current arch no longer defines — currently only the
+        t1_decoder head (removed in the no-seg arm, where it never received gradient,
+        so dropping it is exact). Any OTHER unexpected key is an arch mismatch and
+        still fails loudly instead of being silently discarded."""
+        own = set(own)
+        extra = [k for k in sd if k not in own]
+        if not extra:
+            return sd
+        bad = [k for k in extra if not k.startswith("t1_decoder.")]
+        if bad:
+            raise ValueError(
+                f"[resume] {what}: checkpoint carries {len(extra)} keys absent from the "
+                f"model, {len(bad)} of them outside t1_decoder.* (e.g. {bad[:3]}). "
+                "Architecture mismatch — refusing to drop them silently.")
+        logging.info(f"[resume] {what}: dropped {len(extra)} t1_decoder.* keys "
+                     "(head removed from the arch; those weights were never trained).")
+        return {k: v for k, v in sd.items() if k in own}
 
     def _try_resume(self):
         latest = self._ckpt("latest")
         if not os.path.exists(latest):
             return
         state = torch.load(latest, map_location=self.device, weights_only=False)
+        state["model"] = self._filter_ckpt_state(
+            state["model"], self.model.state_dict().keys(), "model")
         self.model.load_state_dict(state["model"])
         self.global_step = state.get("step", 0)
         # If the selection criterion has changed since the ckpt was saved, the
@@ -1544,7 +1611,9 @@ class Runner:
         if "optimizer" in state:
             self.optimizer.load_state_dict(state["optimizer"])
         if "ema" in state:
-            self.ema.ema_state = {k: v.to(self.device) for k, v in state["ema"].items()}
+            _ema_sd = self._filter_ckpt_state(
+                state["ema"], self.ema.ema_state.keys(), "ema")
+            self.ema.ema_state = {k: v.to(self.device) for k, v in _ema_sd.items()}
             self.ema.optimization_step = state.get("ema_optimization_step", 0)
         if "scheduler" in state and self.scheduler is not None:
             self.scheduler.load_state_dict(state["scheduler"])
@@ -1746,7 +1815,13 @@ class Runner:
             return pack
         model = self._unwrap()
         brain: Optional[Tensor] = None
-        if getattr(model, "t1_encoder", None) is not None and getattr(model, "t1_decoder", None) is not None:
+        # Only the 4-class seg head yields a usable soft brain mask. Under
+        # t1_task='recon' the 1-ch output is discarded below, so running the T1 branch
+        # here is pure waste (an extra no-grad encoder+decoder forward every step) —
+        # go straight to the t1>thr fallback.
+        if (str(getattr(model, "t1_task", "seg")) == "seg"
+                and getattr(model, "t1_encoder", None) is not None
+                and getattr(model, "t1_decoder", None) is not None):
             with torch.no_grad():
                 t1_feat_map, _, t1_skips = model.t1_encoder(pack["t1"])
                 t1_seg_logits = model.t1_decoder(t1_feat_map, t1_skips)
@@ -2715,6 +2790,12 @@ class Runner:
             current_lr = self.optimizer.param_groups[0]["lr"]
             writer.add_scalar("train/lr", current_lr, self.global_step)
             writer.add_scalar("train/total", last_loss, self.global_step)
+            # Window-fusion probes (once per epoch, floats stashed by the last
+            # forward): gate = how much guidance the model asked for; entropy ==
+            # ln(window tokens) means the grouping has NOT been learnt and the
+            # module is still a box blur; delta = per-level feature perturbation.
+            for _wk, _wv in self._unwrap().window_stats().items():
+                writer.add_scalar(f"window/{_wk}", _wv, self.global_step)
             for key in ("loss_n2n", "loss_t1", "loss_cos", "loss_tv", "loss_bg",
                         "loss_grad", "loss_ssim", "loss_seg", "loss_contrast",
                         "loss_adv", "adv_triggered", "loss_pid", "loss_sharp",

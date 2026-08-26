@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -1035,6 +1035,181 @@ class ContentOnlyDecoder(nn.Module):
         return x
 
 
+# -----------------------------------------------------------------------------
+# WindowCrossFusion (2026-08-26) — anatomy-grouped local attention
+# -----------------------------------------------------------------------------
+# Full design + measured constants: docs/multiscale_window_design.md
+#
+# The coarse scales (16x16 CMF0, 32x32 CMF1 inside T1GuidedCoarseHead) already
+# carry GLOBAL tissue-guided attention. This module is the FINE-scale half of the
+# same pyramid: it runs at the feature's own resolution (64x64, 128x128) and
+# bounds cost with ws x ws windows instead of by pooling the tokens. Pooling to a
+# fixed 32x32 token budget would demote both fine levels to the 32x32 guidance
+# resolution the 32x32 level already has -- i.e. the same coarse grouping applied
+# four times, unable to separate two adjacent pixels across a GM/WM boundary.
+
+def _window_partition(x: Tensor, ws: int) -> Tensor:
+    """[B,H,W,C] -> [B*nWin, ws, ws, C] (window index varies fastest within B)."""
+    b, h, w, c = x.shape
+    x = x.view(b, h // ws, ws, w // ws, ws, c)
+    return x.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, ws, ws, c)
+
+
+def _window_reverse(win: Tensor, ws: int, h: int, w: int) -> Tensor:
+    """Inverse of :func:`_window_partition`."""
+    b = int(win.shape[0] / max(h * w / ws / ws, 1))
+    x = win.view(b, h // ws, w // ws, ws, ws, -1)
+    return x.permute(0, 1, 3, 2, 4, 5).contiguous().view(b, h, w, -1)
+
+
+class WindowCrossFusion(nn.Module):
+    """Local cross-attention: Q = ASL, K = T1 (or ASL), V = ASL *unprojected*.
+
+    Per ws x ws window::
+
+        x' = x + reverse( g * (A @ xw - xw) ),   A row-stochastic, g = sigmoid(a)
+
+    Because ``A`` is row-stochastic, ``V`` is not projected and there is no output
+    projection, every output value is a **convex combination of the same channel's
+    ASL values inside the window**, hence a maximum principle::
+
+        min_window(x[..., c]) <= x'[..., c] <= max_window(x[..., c])
+
+    T1 therefore steers *which* ASL values get averaged but contributes no content
+    of its own -- V=ASL is a structural property here, not a convention, and it is
+    covered by ``tests/test_window_fusion.py``. Two consequences worth knowing:
+
+      * No brain masking is needed on the T1 side (unlike an additive-injection
+        design): out-of-brain T1 can only mis-steer weights inside a window, it
+        cannot put skull/scalp content into the output.
+      * The module can only average, never sharpen. The risk profile is
+        over-smoothing, not hallucination -- monitor lapvar / EFC, not leakage.
+
+    The gate is sigmoid-parameterised on purpose. With a clamped gate at exactly 0
+    the attention parameters get *exactly* zero gradient (dx'/dtheta = g * ...) and
+    clamp() has zero gradient at the boundary too, so the module would be
+    permanently dead. The bit-exact "no fusion" baseline comes from not building
+    the module at all (``window_fusion_levels=0``), never from g=0.
+
+    Args:
+        ch:            ASL feature channels at this scale
+        t1_ch:         T1 skip channels at this scale (ignored when k_source='asl')
+        window_size:   ws; H and W are zero-padded to a multiple of it
+        n_heads:       halved until it divides ``ch``
+        shift:         cyclic-free shifted-window offset (pad-based, no wrap-around)
+        gate_init:     logit of the gate; -3.0 => g ~ 0.047 at init
+        k_source:      't1'  = anatomy-grouped cross-attention (default)
+                       'asl' = self-attention control; the decoder stays T1-free,
+                               which is the honest "do we need T1 at all?" arm
+    """
+
+    def __init__(
+        self,
+        ch: int,
+        t1_ch: int,
+        window_size: int = 8,
+        n_heads: int = 4,
+        shift: int = 0,
+        gate_init: float = -3.0,
+        k_source: str = "t1",
+    ) -> None:
+        super().__init__()
+        if k_source not in ("t1", "asl"):
+            raise ValueError(f"k_source must be 't1' or 'asl', got {k_source!r}")
+        heads = int(n_heads)
+        while ch % heads != 0 and heads > 1:
+            heads //= 2
+        ws = int(window_size)
+        self.ws = ws
+        self.shift = int(shift) % ws
+        self.n_heads = heads
+        self.k_source = str(k_source)
+        self.head_dim = ch // heads
+        self.scale = float(self.head_dim) ** -0.5
+        self.proj_t1 = nn.Conv2d(t1_ch, ch, kernel_size=1, bias=False) if k_source == "t1" else None
+        self.wq = nn.Linear(ch, ch, bias=False)
+        self.wk = nn.Linear(ch, ch, bias=False)
+        # NOTE: deliberately no W_v and no output projection -- either destroys the
+        # convex-combination property that makes V=ASL structural.
+        self.gate_logit = nn.Parameter(torch.tensor(float(gate_init)))
+        self.tau = nn.Parameter(torch.tensor(2.0))          # tissue-bias strength (+seg arm)
+        self.rel_bias = nn.Parameter(torch.zeros((2 * ws - 1) ** 2, heads))
+        coords = torch.stack(torch.meshgrid(
+            torch.arange(ws), torch.arange(ws), indexing="ij")).flatten(1)
+        rel = (coords[:, :, None] - coords[:, None, :]).permute(1, 2, 0)
+        rel[:, :, 0] += ws - 1
+        rel[:, :, 1] += ws - 1
+        rel[:, :, 0] *= 2 * ws - 1
+        self.register_buffer("rel_index", rel.sum(-1).view(-1), persistent=False)
+        nn.init.trunc_normal_(self.rel_bias, std=0.02)
+        self.last_stats: Dict[str, float] = {}
+
+    def _pad(self, t: Tensor, ph: int, pw: int) -> Tensor:
+        # t is [B,H,W,C]; F.pad orders the last dim first.
+        return F.pad(t, (0, 0, self.shift, pw, self.shift, ph)) if (ph or pw or self.shift) else t
+
+    def forward(
+        self,
+        x: Tensor,
+        t1_feat: Optional[Tensor] = None,
+        tissue_seg: Optional[Tensor] = None,
+    ) -> Tensor:
+        b, c, h, w = x.shape
+        ws, s = self.ws, self.shift
+        if self.k_source == "t1":
+            if t1_feat is None:
+                raise ValueError("WindowCrossFusion(k_source='t1') needs t1_feat")
+            key_src = self.proj_t1(t1_feat)
+        else:
+            key_src = x
+        # Shift is implemented by padding rather than torch.roll: no wrap-around,
+        # so no need for SwinIR's attention mask to keep opposite edges apart.
+        ph = (ws - (h + s) % ws) % ws
+        pw = (ws - (w + s) % ws) % ws
+        xt = self._pad(x.permute(0, 2, 3, 1), ph, pw)
+        kt = self._pad(key_src.permute(0, 2, 3, 1), ph, pw)
+        hp, wp = xt.shape[1], xt.shape[2]
+        valid = self._pad(x.new_ones(1, h, w, 1), ph, pw)     # 0 on padded positions
+
+        xw = _window_partition(xt, ws).reshape(-1, ws * ws, c)
+        kw = _window_partition(kt, ws).reshape(-1, ws * ws, c)
+        vw = _window_partition(valid, ws).reshape(-1, ws * ws)          # [nWin, N]
+        bn, n, _ = xw.shape
+
+        q = self.wq(xw).view(bn, n, self.n_heads, self.head_dim).transpose(1, 2)
+        k = self.wk(kw).view(bn, n, self.n_heads, self.head_dim).transpose(1, 2)
+        v = xw.view(bn, n, self.n_heads, self.head_dim).transpose(1, 2)  # V = ASL, unprojected
+        attn = (q * self.scale) @ k.transpose(-2, -1)
+        attn = attn + self.rel_bias[self.rel_index].view(n, n, -1).permute(2, 0, 1).unsqueeze(0)
+        if tissue_seg is not None:
+            seg = tissue_seg
+            if seg.shape[-2:] != (h, w):
+                seg = F.interpolate(seg, size=(h, w), mode="bilinear", align_corners=False)
+            seg = self._pad(seg.permute(0, 2, 3, 1), ph, pw)
+            sw = _window_partition(seg, ws).reshape(-1, n, seg.shape[-1])
+            sn = F.normalize(torch.sigmoid(sw), dim=-1, eps=1e-6)
+            attn = attn + (self.tau * (sn @ sn.transpose(-1, -2))).unsqueeze(1)
+        if bool((vw < 0.5).any()):
+            key_mask = vw.repeat(b, 1)[:, None, None, :] < 0.5          # [bn,1,1,N]
+            attn = attn.masked_fill(key_mask, float("-inf"))
+        attn = attn.softmax(dim=-1)
+
+        y = (attn @ v).transpose(1, 2).reshape(bn, n, c)
+        gate = torch.sigmoid(self.gate_logit)
+        delta = _window_reverse((gate * (y - xw)).view(-1, ws, ws, c), ws, hp, wp)
+        delta = delta[:, s:s + h, s:s + w]
+        out = x + delta.permute(0, 3, 1, 2)
+
+        with torch.no_grad():
+            p = attn.clamp_min(1e-9)
+            self.last_stats = {
+                "gate": float(gate),
+                "entropy": float(-(p * p.log()).sum(-1).mean()),
+                "delta": float((out - x).norm() / x.norm().clamp_min(1e-8)),
+            }
+        return out
+
+
 class ASLDetailDecoder(nn.Module):
     """Detail decoder for the ASL path: 32x32 -> 128x128, pure ASL.
 
@@ -1062,6 +1237,17 @@ class ASLDetailDecoder(nn.Module):
         final_activation: Optional[nn.Module] = None,
         use_wavelet: bool = False,
         use_rgsf: bool = False,
+        # 2026-08-26 multi-scale window fusion (docs/multiscale_window_design.md).
+        # window_fusion_levels counts from the FINEST level down: 0 = none (the
+        # module is not built at all, so the decoder stays T1-free at the signature
+        # level and the arch is bit-identical to the pre-2026-08-26 model),
+        # 1 = 128x128 only, 2 = 64x64 + 128x128.
+        window_fusion_levels: int = 0,
+        window_size: int = 8,
+        window_heads: int = 4,
+        window_gate_init: float = -3.0,
+        window_k_source: str = "t1",
+        window_t1_channels: Optional[List[int]] = None,
     ) -> None:
         super().__init__()
         self.depth = depth
@@ -1089,6 +1275,27 @@ class ASLDetailDecoder(nn.Module):
         self.final_activation = final_activation
         self.skip_drop = nn.Dropout2d(p=float(skip_dropout))
 
+        # Window cross-fusion, equipped on the last `window_fusion_levels` levels.
+        # The finest level is shifted by ws//2 so window seams do not land in the
+        # output; the coarser one is unshifted (a seam there is smoothed by the
+        # remaining up-block).
+        n_lv = len(remaining)
+        self.window_fusion_levels = max(0, min(int(window_fusion_levels), n_lv))
+        t1_chs = list(window_t1_channels) if window_t1_channels is not None else list(remaining)
+        if len(t1_chs) != n_lv:
+            raise ValueError(f"window_t1_channels must have {n_lv} entries, got {len(t1_chs)}")
+        self.window_fusions = nn.ModuleList()
+        for i, next_ch in enumerate(remaining):
+            if i >= n_lv - self.window_fusion_levels:
+                self.window_fusions.append(WindowCrossFusion(
+                    ch=next_ch, t1_ch=int(t1_chs[i]),
+                    window_size=int(window_size), n_heads=int(window_heads),
+                    shift=(int(window_size) // 2 if i == n_lv - 1 else 0),
+                    gate_init=float(window_gate_init), k_source=str(window_k_source),
+                ))
+            else:
+                self.window_fusions.append(nn.Identity())
+
         # Reliability-Gated Skip Fusion (RGSF): per-scale sigmoid gate on ASL
         # skip, parameterised by per-pixel noise variance.
         #   b_s = softplus(b_raw_s)  ← enforces b_s ≥ 0 structurally
@@ -1115,10 +1322,15 @@ class ASLDetailDecoder(nn.Module):
         x: Tensor,
         asl_skips_detail: List[Tensor],
         noise_var: Optional[Tensor] = None,
+        t1_skips_detail: Optional[List[Tensor]] = None,
+        tissue_seg: Optional[Tensor] = None,
     ) -> Tensor:
         """asl_skips_detail ordered high-res-last (depth=4: [skip_64, skip_128]).
         noise_var: optional [B,1,H,W] per-pixel input-frame variance; required if
         use_rgsf=True.
+        t1_skips_detail: same ordering as asl_skips_detail; consumed ONLY by the
+        window fusions (and only when k_source='t1'). Ignored entirely when
+        window_fusion_levels=0, so the T1-free decoder is unchanged.
         """
         if len(asl_skips_detail) != len(self.ups):
             raise ValueError(
@@ -1138,6 +1350,10 @@ class ASLDetailDecoder(nn.Module):
                 skip = skip * w_s
             skip = self.skip_drop(skip)
             x = fuse(torch.cat([x, skip], dim=1))
+            wf = self.window_fusions[i]
+            if not isinstance(wf, nn.Identity):
+                t1_s = t1_skips_detail[i] if t1_skips_detail is not None else None
+                x = wf(x, t1_s, tissue_seg=tissue_seg)
         x = self.head(x)
         if x.shape[-1] != self.out_hw or x.shape[-2] != self.out_hw:
             x = F.interpolate(x, size=(self.out_hw, self.out_hw), mode="bilinear", align_corners=False)
