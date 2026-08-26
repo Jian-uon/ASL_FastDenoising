@@ -1,7 +1,10 @@
 #!/bin/sh
 #SBATCH -p gpu5 -N 1 --gpus-per-node=1 --cpus-per-gpu=8 -J v35_joint
 #SBATCH -o env/hpc/slurm/logs/v35j-%j.out
-#SBATCH -e env/hpc/slurm/logs/v35j-%j.err
+# NO `-e`: stderr is merged into the .out on purpose. The runner logs through
+# Python logging and tqdm, BOTH of which write to stderr, so with separate files
+# the .out holds only the shell echoes and looks empty while training is fine --
+# which cost an afternoon of debugging on 2026-08-26. One file, chronological.
 #SBATCH --time=72:00:00           # 500 epochs conv backbone (~3.3 min/epoch on RTX 5070 Ti => ~28h; margin for slower nodes)
 # Tianhe job — V35-joint (user decision 2026-08-24): revive the V35 line
 # (--use_t1_cross_fusion: FRA aggregator + multi-scale tissue cross-attn,

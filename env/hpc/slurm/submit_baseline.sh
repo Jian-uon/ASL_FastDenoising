@@ -1,7 +1,10 @@
 #!/bin/sh
 #SBATCH -p gpu5 -N 1 --gpus-per-node=1 --cpus-per-gpu=8 -J v35_base
 #SBATCH -o env/hpc/slurm/logs/base-%j.out
-#SBATCH -e env/hpc/slurm/logs/base-%j.err
+# NO `-e`: stderr is merged into the .out on purpose. The runner logs through
+# Python logging and tqdm, BOTH of which write to stderr, so with separate files
+# the .out holds only the shell echoes and looks empty while training is fine --
+# which cost an afternoon of debugging on 2026-08-26. One file, chronological.
 #SBATCH --time=72:00:00
 # Tianhe job — the external architecture baselines for the Medical Physics paper.
 # Same Noise2Noise regime and the same data/config as the main arms, so the
