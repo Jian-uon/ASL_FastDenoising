@@ -3,7 +3,7 @@
 
 Pure numpy + math (no torch, no scipy) — a POST-HOC evaluation layer, never imported
 by the training runner. Together with `utils/cbf.py` it is the whole CBF-space
-evaluation stack (plan docs/rad_ai_route2_plan.md §4; Paper-1 experiments E1/E2/E3).
+evaluation stack (plan ASL_dmvae/docs/rad_ai_route2_plan.md §4; Paper-1 experiments E1/E2/E3).
 
 Analysis unit is the SUBJECT (or subject×session×ROI) — feed ONE scalar per subject
 (e.g. a regional CBF / rCBF value), NOT per-slice / per-voxel values. Every CI is a

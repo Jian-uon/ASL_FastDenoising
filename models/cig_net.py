@@ -32,9 +32,9 @@ from this module:
     )
 
 The full architecture, training protocol, and selection criterion are
-documented in ``docs/archive/v2_mossm/cig_net.md``.
+documented in ``ASL_dmvae/docs/archive/v2_mossm/cig_net.md``.
 
-Design contracts (see paper §2 / docs/archive/v2_mossm/cig_net.md §2):
+Design contracts (see paper §2 / ASL_dmvae/docs/archive/v2_mossm/cig_net.md §2):
 
   C1  Lesion-safe aggregation         — SetTransformerAggregator
   C2  T1 content isolation (V = ASL)  — MoSSM (P2 gated B/Δ) + CMAM (P3 low-rank K)

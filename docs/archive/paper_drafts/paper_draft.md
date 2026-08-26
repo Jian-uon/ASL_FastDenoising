@@ -359,7 +359,7 @@ Table 2: Ablation table on full val set.
 
 ## References
 
-(Bibliography — collect from [docs/related_work.md](related_work.md) and [docs/papers/](papers/) as we go. Full BibTeX in supplementary.)
+(Bibliography — collect from `docs/related_work.md` (local only, not in this public repo) and `docs/papers/` as we go. Full BibTeX in supplementary.)
 
 Key references already verified:
 1. Lehtinen et al., "Noise2Noise", ICML 2018.

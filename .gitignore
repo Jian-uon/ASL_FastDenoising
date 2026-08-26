@@ -44,3 +44,11 @@ docs/v35_patent_version.md
 
 # Baidu Sync temp files (this working copy lives inside BaiduSyncdisk)
 *.baiduyun.uploading.cfg
+
+# Paper / strategy documents — LOCAL ONLY (2026-08-26, option B).
+# The repo is public. Engineering docs stay; what a competitor could act on does not:
+# the unrun experiment matrix, the submission target, and the prior-art positioning.
+# Purged from history with git filter-repo; local working copies are untouched.
+docs/v35_paper/
+docs/publishability_precedents.md
+docs/related_work.md

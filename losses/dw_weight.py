@@ -5,7 +5,7 @@ Builds the per-pixel loss-weight map ``d ∈ [0,1]`` ("candidate reproducible
 anomaly") that DW-N2N feeds into ``ASLN2NLoss`` via ``dev_weight`` (hooks
 ``up_dev`` / ``relax_smooth`` already exist in ``losses/asl_n2n_loss.py``).
 
-Design doc: docs/dwn2n_design.md.  Key properties:
+Design doc: ASL_dmvae/docs/dwn2n_design.md.  Key properties:
 
   * CLOSED-FORM, ZERO learnable parameters, fully ``@torch.no_grad()`` —
     cannot collapse, cannot be gamed by the recon loss (the RGSF/Var_T lesson).
@@ -38,7 +38,7 @@ Monitors returned with the map (log to TB; whitelist keys: ``dw_mean``,
   * mean weight and active fraction — sanity that the map is sparse.
 
 The other two protocol monitors (mismatched-T1 leak re-test on the DW-trained
-arm; uMSE non-regression) are eval-side — see docs/dwn2n_design.md §5.
+arm; uMSE non-regression) are eval-side — see ASL_dmvae/docs/dwn2n_design.md §5.
 """
 from __future__ import annotations
 

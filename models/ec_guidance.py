@@ -36,7 +36,7 @@ def _norm01(x: Tensor, eps: float = 1e-5) -> Tensor:
     LOCAL reliability maps supervised by LOCAL patch artifacts (L_rep) and a per-map
     ranking (L_sem), where within-sample relative structure is what matters. It is
     NOT a global evidence-level (n_eff) signal — that was deliberately excluded
-    (q_k/K_eff rejected; see docs/cig_vss.md). A future global-strength term, if
+    (q_k/K_eff rejected; see ASL_dmvae/docs/cig_vss.md). A future global-strength term, if
     added, must be a separate scalar, not recovered from this normalised input."""
     B = x.shape[0]
     flat = x.reshape(B, -1)
@@ -87,7 +87,7 @@ class ECGuidance(nn.Module):
         # (slope≈0.018 ⇒ c≈σ(4)≈0.98 ⇒ γ≈1 while L_sem warms up), adding only the
         # dataset-level ASL prototype M0 and the prior log-precision ρ. Prototypes stay
         # pure-ASL (M0 is an ASL-feature param, PV only forms the design matrix) ⇒ V=ASL
-        # preserved. Full design + caveats: docs/backlog_future_ideas.md §1.
+        # preserved. Full design + caveats: ASL_dmvae/docs/backlog_future_ideas.md §1.
         self.sem_bayes = bool(sem_bayes)
         # sem_bayes_loo: RETIRED 2026-08-05 (LOO dropped as empirically inert; the runner
         # always constructs no-LOO now). The LOO forward branch is KEPT only so old LOO
@@ -173,7 +173,7 @@ class ECGuidance(nn.Module):
         DETACHED per-sample so the gate cannot be gamed by inflating predictive variance.
         NOTE: per-sample σ ⇒ this is a LOCAL-anomaly detector (its real job, for lesion
         preservation), NOT a global wrong-subject detector (demoted; see
-        docs/tmi_experiment_plan.md). H0 straw-man / attribution caveats: backlog §1."""
+        ASL_dmvae/docs/tmi_experiment_plan.md). H0 straw-man / attribution caveats: backlog §1."""
         f = self._down(self.sem_feat(agg_a))                      # [B,d,h,w]
         pv = self._down(pv)                                       # [B,C,h,w]
         if w is None:

@@ -53,7 +53,8 @@ analysis).
 ## Documentation
 
 Start with [CLAUDE.md](CLAUDE.md) — architecture, constraints, validation policy, open work, and
-the decisions that must not be re-litigated. Paper materials live in [docs/v35_paper/](docs/v35_paper/).
+the decisions that must not be re-litigated. Paper materials (`docs/v35_paper/`) and the patent
+drafts are kept **out of this public repo** — see AGENTS.md.
 
 ## Provenance
 

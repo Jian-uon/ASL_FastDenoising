@@ -911,7 +911,7 @@ class ContentOnlyDecoder(nn.Module):
 
     RETIRED 2026-07-16 (with the MoSSM/CIG-Net-v2 line). NOT the main-line
     decoder: the CIG-VSS + EC-LRDA main method uses the plain T1-free
-    ``ConvDecoderWithSkips2D`` (see docs/cig_vss.md §3.5). This class is only
+    ``ConvDecoderWithSkips2D`` (see ASL_dmvae/docs/cig_vss.md §3.5). This class is only
     reachable via ``--use_naf_fusion``, which the runner now rejects. Kept in
     place (blocks.py shares NAF fusion helpers) so old v2 ckpts stay readable
     from git history; do not describe the main model as using SimpleGate/MDTA.
@@ -1363,7 +1363,7 @@ class ASLDetailDecoder(nn.Module):
 
 
 # --- backward-compat aliases (old class name -> new paper-aligned name) ------
-# Renamed 2026-06-27 for paper consistency (see docs/archive/v2_mossm/cig_net.md naming table).
+# Renamed 2026-06-27 for paper consistency (see ASL_dmvae/docs/archive/v2_mossm/cig_net.md naming table).
 # Submodule attribute names and CLI flags are UNCHANGED, so existing checkpoints
 # and slurm scripts load unaffected; these aliases keep every external import
 # (figure/eval scripts that still say `SetTransformerAggregator` / `NAFDecoder`)

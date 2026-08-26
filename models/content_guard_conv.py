@@ -6,7 +6,7 @@ and CNR (seed-42 sweep), while the T1 guidance itself was shown to help *within*
 the SSM family. This module grafts the SAME content-guard invariants onto the
 conv backbone so the guidance rides on the stronger encoder.
 
-Design (see docs/cig_unet_design.md):
+Design (see ASL_dmvae/docs/cig_unet_design.md):
   * Backbone == PlainUNet2D's ``ConvEncoder2D`` (identical ResidualBlock stages),
     so with all guards zero-initialised the encoder is byte-for-byte the vanilla
     winner at step 0.

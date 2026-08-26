@@ -157,7 +157,7 @@ class ASLT1Denoiser(nn.Module):
     """CIG-Net top-level model: Content-Isolated Anatomical Guidance for
     self-supervised 7T ASL denoising.
 
-    See ``docs/cig_vss.md`` for the complete architecture spec, training
+    See ``ASL_dmvae/docs/cig_vss.md`` for the complete architecture spec, training
     protocol, and selection criterion. This docstring is a high-level pointer.
     The class is kept under its original name ``ASLT1Denoiser`` (rather than
     ``CIGNet``) so that all existing checkpoint state-dict keys remain valid;
@@ -245,7 +245,7 @@ class ASLT1Denoiser(nn.Module):
         cada_lr_bound: float = 4.0,
         # 2026-07 CIG-UNet: graft the content-guard (LRDA + AKMR) onto the plain
         # ConvEncoder2D backbone (which beat MoSSM). Conv-native content-safe
-        # guidance. See docs/cig_unet_design.md. Mutually exclusive with
+        # guidance. See ASL_dmvae/docs/cig_unet_design.md. Mutually exclusive with
         # use_mossm_encoder. With all guards zero-init the model == vanilla
         # PlainUNet2D at step 0; the T1-off control is --zero_t1.
         use_conv_encoder: bool = False,
@@ -304,7 +304,7 @@ class ASLT1Denoiser(nn.Module):
         slice_context: int = 0,                # 2.5D: ASL input = 2*ctx+1 adjacent z-slices as
                                                #   channels (0 = 2D). T1 stays 2D (center slice);
                                                #   output/target/repro are the CENTER slice.
-        # 2026-06-15 attribution baselines (see docs/cada_lr_design.md §10):
+        # 2026-06-15 attribution baselines (see ASL_dmvae/docs/cada_lr_design.md §10):
         #   zero_t1        — blank the T1 INPUT (t1 := 0) before the T1 encoder.
         #                    The full T1 machinery (CADA/CMAM/seg) still runs but
         #                    on zeros, so it carries no subject information.

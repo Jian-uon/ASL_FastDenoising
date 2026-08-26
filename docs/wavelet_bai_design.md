@@ -9,7 +9,7 @@
 > (3.516M, no-seg 臂) 上用原型探针实测的，不是估算。实现清单见 §8。
 >
 > 关联：CLAUDE.md §3（约束表已按本文档更新）、§7-3（BAI 原计划）、
-> [experiment_plan.md](v35_paper/experiment_plan.md)、[leakage_spectrum.py](../scripts/leakage_spectrum.py)。
+> `v35_paper/experiment_plan.md`（**本地文档，未纳入公开仓库**）、[leakage_spectrum.py](../scripts/leakage_spectrum.py)。
 
 ---
 
@@ -293,7 +293,7 @@ no-seg 臂里 T1 编码器的梯度**只**来自 CMF 的 K 路——CLAUDE.md §
 | [models/asl_t1_model.py](../models/asl_t1_model.py) | 新 kwargs `bai_alpha_max / bai_bands / bai_gate_init`；`_decode_asl` 传 `list(reversed(t1_skips[:depth-2]))`；`bai_stats()` 汇总 ρ/α/Δ |
 | [runners/asl_t1_guided_runner_dmvae_n2n.py](../runners/asl_t1_guided_runner_dmvae_n2n.py) | CLI `--bai_alpha_max --bai_bands`；写进 `denoiser_kwargs`（⇒ 自动进 ckpt 的 `arch`）；每 N step 记 ρ/α/Δ/bg_frac 到 TB |
 | [scripts/leakage_spectrum.py](../scripts/leakage_spectrum.py) | 无需改（已支持任意 ckpt）；新增按 α 汇总的绘图脚本 |
-| [docs/v35_paper/experiment_plan.md](v35_paper/experiment_plan.md) | 训练矩阵加 7 个 run；图表清单加 Pareto 图 + ρ 轨迹图 |
+| `docs/v35_paper/experiment_plan.md`（本地文档） | 训练矩阵加 7 个 run；图表清单加 Pareto 图 + ρ 轨迹图 |
 | CLAUDE.md | §3 约束表（已改）、§7-3 指向本文档（已改） |
 
 **兼容性**：`α_max=0` 时 arch 与今天完全一致 ⇒ 旧 ckpt 严格加载不受影响；新 run 的

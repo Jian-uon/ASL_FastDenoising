@@ -28,8 +28,8 @@ loss against a "reference" image is itself biased and is diagnostic only.
 
 **Target venues.** CCR2026 abstract **submitted 2026-08-25** (title: *Self-Supervised Denoising for
 Accelerated 7T ASL Perfusion MRI*). Journal target: **BSPC** (Biomedical Signal Processing and
-Control) — application-oriented, no ASL paper ever published there (open niche). See
-[docs/v35_paper/](docs/v35_paper/).
+Control) — application-oriented, no ASL paper ever published there (open niche). The paper
+materials (`docs/v35_paper/`) are **local only — kept out of this public repo**; see AGENTS.md.
 
 ---
 
@@ -231,7 +231,8 @@ needs to be completed (`--resume`) before the comparison is final.
 6. **External validation:** OSIPI synthetic DRO (has clean GT ⇒ the only unbiased external
    PSNR/SSIM anchor) and the dai in-vivo 3T control set (needs `flirt struc2asl` adaptation).
 
-Full figure/table checklist and the training matrix: [docs/v35_paper/experiment_plan.md](docs/v35_paper/experiment_plan.md).
+Full figure/table checklist and the training matrix: `docs/v35_paper/experiment_plan.md`
+(**local only — not in this public repo**).
 
 ### Closed questions — do not re-explore
 
@@ -278,12 +279,14 @@ scripts/        Eval + analysis tooling (selection, mismatch, injection, CBF, sp
 utils/          CBF, EMA, collate, metrics, batch prep
 env/local/      Local (Windows) config
 env/hpc/        Tianhe: env.sh + slurm/submit_v35_joint.sh + server config
-docs/           v35_paper/ (paper plan, CCR abstract), validation_metrics.md, patent record
+docs/           validation_metrics.md, v37_legacy.md, multiscale_window_design.md
+                (v35_paper/ + patent record + related_work are LOCAL ONLY — see AGENTS.md)
 ```
 
-**Reading order for new context:** this file → [docs/v35_paper/README.md](docs/v35_paper/README.md)
-→ [docs/v35_paper/experiment_plan.md](docs/v35_paper/experiment_plan.md) →
-[docs/validation_metrics.md](docs/validation_metrics.md).
+**Reading order for new context:** this file → [docs/validation_metrics.md](docs/validation_metrics.md)
+→ [docs/multiscale_window_design.md](docs/multiscale_window_design.md). If you have the local
+working copy, `docs/v35_paper/README.md` and `docs/v35_paper/experiment_plan.md` come first —
+they are kept out of this public repo (AGENTS.md explains what else is).
 
 **Windows vs WSL/HPC:** this line is conv-only — no mamba-ssm CUDA kernels needed, so it trains
 fine on Windows GPU. (The `monai` conda env at `D:/softwares/anaconda/envs/monai` has torch 2.9 +

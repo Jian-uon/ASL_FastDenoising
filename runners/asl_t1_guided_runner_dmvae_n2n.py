@@ -180,7 +180,7 @@ def parse_args():
                         "ASL-branch init early on; the average then starts from a "
                         "sensible θ_N. Default 0 (no warmup). Pair with --best_min_step.")
     # Innovation A — Adversarial mismatched-T1 training (identity-invariant
-    # cross-modal conditioning). See docs/method_innovations.md §A.
+    # cross-modal conditioning). See ASL_dmvae/docs/method_innovations.md §A.
     p.add_argument("--use_adv_t1", action="store_true",
                    help="Enable adversarial mismatched-T1 loss: with prob --p_adv, run a "
                         "second forward pass using a permuted T1 from another subject in "
@@ -194,7 +194,7 @@ def parse_args():
                    help="Disable stop-gradient on the mismatched-T1 branch (default uses "
                         "BYOL-style stop-grad to avoid two-way training instability).")
     # Innovation T — Privileged Information Distillation (LUPI-style).
-    # See docs/method_innovations.md §T. T1 is treated as 'privileged information'
+    # See ASL_dmvae/docs/method_innovations.md §T. T1 is treated as 'privileged information'
     # available only at training time; the model self-distills its T1-aware output
     # into a T1-free forward pass, so deployment can run with T1=0 (zero T1 input
     # path) and hallucination is structurally impossible at inference.
@@ -325,7 +325,7 @@ def parse_args():
     p.add_argument("--cada_n_groups_B", type=int, default=4,
                    help="Number of channel groups for the CADA B-side gate. "
                         "d_state must be divisible by this. Default 4.")
-    # 2026-06-15 attribution baselines (see docs/cada_lr_design.md §10).
+    # 2026-06-15 attribution baselines (see ASL_dmvae/docs/cada_lr_design.md §10).
     p.add_argument("--zero_t1", action="store_true",
                    help="ASL-only-MoSSM baseline: blank the T1 input (t1:=0) before "
                         "the T1 encoder. Same architecture/params as the full model; "
@@ -353,7 +353,7 @@ def parse_args():
                    help="Replace the gated T1-residual on B with a T1-conditioned "
                         "low-rank adapter ΔB=U_B(s⊙V_B u) (T1 only reweights an ASL "
                         "projection; no additive T1). Δ stays gated. "
-                        "See docs/cada_lr_design.md.")
+                        "See ASL_dmvae/docs/cada_lr_design.md.")
     p.add_argument("--cada_lr_rank", type=int, default=8,
                    help="Low-rank dimension r for CADA-LR (default 8).")
     p.add_argument("--cada_lr_bound", type=float, default=4.0,
@@ -381,7 +381,7 @@ def parse_args():
                    help="Number of 2D scan directions per MoSSM block (1/2/4). "
                         "Default 1 for speed (4 is VMamba-equivalent cross-scan).")
     # Hybrid CNN-SSM + stage-adaptive scan (2026-06-05). See
-    # docs/archive/v2_mossm/hybrid_mossm_stage_adaptive_implementation.md (RETIRED line).
+    # ASL_dmvae/docs/archive/v2_mossm/hybrid_mossm_stage_adaptive_implementation.md (RETIRED line).
     p.add_argument("--mossm_n_directions_by_stage", type=str, default="",
                    help="Optional comma-separated per-stage MoSSM scan directions, "
                         "e.g. '1,1,2,2'. Overrides --mossm_n_directions when set.")
@@ -394,7 +394,7 @@ def parse_args():
                    help="Depthwise kernel size of the hybrid local branch. Default 3.")
     p.add_argument("--mossm_d_state", type=int, default=16,
                    help="SSM hidden state dimension per channel. Default 16 (MambaIR).")
-    # 2026-07 CIG-UNet: content-guard on the plain conv backbone (docs/cig_unet_design.md)
+    # 2026-07 CIG-UNet: content-guard on the plain conv backbone (ASL_dmvae/docs/cig_unet_design.md)
     p.add_argument("--use_conv_encoder", action="store_true",
                    help="CIG-UNet: content-guarded ConvEncoder2D (LRDA-Conv + AKMR) "
                         "+ T1-free plain decoder. Grafts the V=ASL content-guard onto "
@@ -439,7 +439,7 @@ def parse_args():
                         "isotropic 2D coverage at the same cost. No effect for n=1/4.")
     p.add_argument("--vmamba_blocks_per_scale", type=int, default=2,
                    help="VSS blocks per VMamba encoder stage. Default 2.")
-    # 2026-07 single-branch conv inductive bias for VMamba (docs/cig_unet_design.md).
+    # 2026-07 single-branch conv inductive bias for VMamba (ASL_dmvae/docs/cig_unet_design.md).
     # Fold the conv bias INTO the token stream instead of a parallel branch, so the
     # SSM's long-range modelling is not averaged away. All default OFF = unchanged.
     p.add_argument("--vmamba_convffn", action="store_true",
@@ -503,7 +503,7 @@ def parse_args():
                    help="EC-LRDA: condition in-scan LRDA on soft-PV composition via a bilinear "
                         "s(PV)⊙a(ASL) adapter, calibrated by γ=r_rep·c_sem. Replaces the raw-T1-"
                         "feature φ conditioning + legacy repro/coupling gates. Needs t1_task=seg. "
-                        "This is the MAIN-METHOD conditioning (docs/cig_vss.md §3.4/§8), enabled by "
+                        "This is the MAIN-METHOD conditioning (ASL_dmvae/docs/cig_vss.md §3.4/§8), enabled by "
                         "the main launcher (env/hpc/slurm/submit_min.sh model 0). Kept opt-in (not an "
                         "argparse default) so non-EC baselines/backbones stay unaffected; OFF ⇒ the "
                         "−EC raw-T1-φ baseline. With the γ calibration on, set --w_rep/--w_sem>0.")
@@ -582,7 +582,7 @@ def parse_args():
                         "H0(ASL-only null) score (not a calibrated Bayes factor). Shrinkage "
                         "prior stabilises rare classes; absolute (no Norm01) σ-standardised misfit ⇒ "
                         "local-anomaly gate for lesion preservation. Prototypes pure-ASL ⇒ V=ASL. The gate "
-                        "is no-LOO. Needs --ec_lrda + --w_sem>0 (gated on E0.3; docs/backlog_future_ideas.md §1).")
+                        "is no-LOO. Needs --ec_lrda + --w_sem>0 (gated on E0.3; ASL_dmvae/docs/backlog_future_ideas.md §1).")
     p.add_argument("--ec_sem_bayes_no_loo", action="store_true",
                    help="DEPRECATED no-op (2026-08-05): the Bayesian gate is now always no-LOO, so this "
                         "flag has no effect. Kept only so older launch scripts do not error.")
@@ -638,7 +638,7 @@ def parse_args():
                         "'seg' = softmax of the frozen stage-1 T1 seg head (needs t1_task='seg'). "
                         "PV here is TRAINING-ONLY (never at inference) ⇒ the FSL PV is strictly the "
                         "better estimate and lets DW run on arms without a T1 seg head. "
-                        "See docs/dwn2n_design.md §3.1.")
+                        "See ASL_dmvae/docs/dwn2n_design.md §3.1.")
     p.add_argument("--w_rep", type=float, default=0.0,
                    help="Weight for L_rep = BCE(r_rep, 1-mean_k M_k) on injected artifact masks "
                         "(needs --patch_artifact_p>0). Supervises ASL reproducibility. Default 0.")
@@ -694,7 +694,7 @@ def parse_args():
                         "still feeds CMF0/CMF1. Auto-kept when --t1_task seg or "
                         "w_anat_roi>0. Set this only to restore the T1-recon val panel.")
     # v42 sub-components (default ON when --use_mossm_encoder; can be disabled
-    # individually for ablation studies — see docs/v42_design_rationale.md)
+    # individually for ablation studies — see ASL_dmvae/docs/v42_design_rationale.md)
     p.add_argument("--no_tabs", action="store_true",
                    help="Ablation: disable Tissue-Aware Bidirectional Scan inside "
                         "MoSSM. Falls back to plain row-major scan order. v42.")
@@ -1168,7 +1168,7 @@ class Runner:
 
         # --- RETIRED 2026-07-16: MoSSM / CIG-Net-v2 backbone + NAFDecoder (CORD) ---
         # The main method is CIG-VSS + EC-LRDA (--use_vmamba_encoder ... --ec_lrda) with a
-        # plain T1-free ConvDecoderWithSkips2D decoder (docs/cig_vss.md). The MoSSM encoder,
+        # plain T1-free ConvDecoderWithSkips2D decoder (ASL_dmvae/docs/cig_vss.md). The MoSSM encoder,
         # the v2 CIGNet, and the NAFDecoder/CORD decoder are no longer part of any runnable
         # path; their code is retained (marked RETIRED) only so old v2 ckpts remain readable
         # from git history. Fail loudly rather than silently building a retired arch.
@@ -1892,7 +1892,7 @@ class Runner:
             mask_b=pack.get("maskB"),
         )
         # DW-N2N: per-pixel deviation weight d in [0,1] = candidate reproducible anomaly
-        # (docs/dwn2n_design.md). E=P·m̄ (shrinkage ridge toward m0) -> noise-calibrated z
+        # (ASL_dmvae/docs/dwn2n_design.md). E=P·m̄ (shrinkage ridge toward m0) -> noise-calibrated z
         # -> even/odd reproducibility gate -> fixed absolute squash. setA/PV-derived => ⊥ setB
         # => N2N-unbiased; @no_grad, never enters the output (strict V=ASL).
         dev_weight = None
@@ -2801,7 +2801,7 @@ class Runner:
                         "loss_adv", "adv_triggered", "loss_pid", "loss_sharp",
                         "probe_agg_entropy", "probe_agg_w_bad",
                         "probe_agg_w_normal_per_frame",
-                        # EC-LRDA: aux losses + leg-liveness probes (docs/experiment_plan_ec_min.md ④).
+                        # EC-LRDA: aux losses + leg-liveness probes (ASL_dmvae/docs/experiment_plan_ec_min.md ④).
                         # r_rep learns iff art<cln; c_sem learns iff match>mismatch.
                         "loss_rep", "loss_sem",
                         "probe_r_rep_art", "probe_r_rep_cln",

@@ -4,7 +4,7 @@
 # Not part of any runnable path: the runner rejects --use_mossm_encoder
 # (asl_t1_guided_runner_dmvae_n2n.py). The main method is CIG-VSS + EC-LRDA
 # (models/content_guard_vmamba.py::VMambaEncoder2D) with a plain
-# ConvDecoderWithSkips2D decoder — see docs/cig_vss.md. This file is kept
+# ConvDecoderWithSkips2D decoder — see ASL_dmvae/docs/cig_vss.md. This file is kept
 # (not physically archived) only because models/blocks.py + the VSS/conv
 # guards share type/forward-contract references and old v2 ckpts must stay
 # readable from git history. Do not extend.
@@ -102,7 +102,7 @@ class DynamicsAdapter(nn.Module):
         self.n_groups_B = int(n_groups_B)
         if self.use_lowrank:
             # CADA-LR (Anatomy-Conditioned Low-Rank Dynamics Adapter; see
-            # docs/cada_lr_design.md). B residual becomes a T1-conditioned
+            # ASL_dmvae/docs/cada_lr_design.md). B residual becomes a T1-conditioned
             # low-rank adapter ACTING ON an ASL projection:
             #     ΔB = U_B( s ⊙ V_B u ),   s = lr_bound · tanh(φ_B(t1)).
             # T1 enters ONLY through s (the rank coefficients); the content
@@ -187,7 +187,7 @@ class AnatomyConditionedSSM2D(nn.Module):
         cada_n_groups_B: int = 4,
         # CADA-LR (2026-06-05): T1-conditioned low-rank dynamics adapter on B.
         # When True, the gated T1-residual on B is replaced by U_B(s⊙V_B u);
-        # see docs/cada_lr_design.md. Δ keeps the gated form.
+        # see ASL_dmvae/docs/cada_lr_design.md. Δ keeps the gated form.
         cada_lr: bool = False,
         cada_lr_rank: int = 8,
         cada_lr_bound: float = 4.0,
@@ -776,7 +776,7 @@ class MoSSMEncoder2D(nn.Module):
         self.depth = depth
         # Stage-adaptive scan directions: int → same for all stages; or a
         # length-`depth` sequence, e.g. [1,1,2,2] = light raster at high-res,
-        # bidirectional at low-res. See docs/archive/v2_mossm/hybrid_mossm_stage_adaptive_implementation.md (RETIRED).
+        # bidirectional at low-res. See ASL_dmvae/docs/archive/v2_mossm/hybrid_mossm_stage_adaptive_implementation.md (RETIRED).
         if isinstance(n_directions, int):
             self.n_directions_per_stage = [int(n_directions)] * depth
         else:
@@ -916,7 +916,7 @@ class MoSSMEncoder2D(nn.Module):
 
 
 # --- backward-compat aliases (old class names -> new paper-aligned names) -----
-# Renamed 2026-06-27 for paper consistency (see docs/archive/v2_mossm/cig_net.md naming table).
+# Renamed 2026-06-27 for paper consistency (see ASL_dmvae/docs/archive/v2_mossm/cig_net.md naming table).
 # Submodule attribute names (self.mossm / self.cmam / self.cada / self.local_branch)
 # and ALL CLI flags (--cada_lr, --use_cmam, --mossm_*, ...) are UNCHANGED, so
 # existing checkpoints (incl. the frozen stage1 T1 prior) and every slurm/local

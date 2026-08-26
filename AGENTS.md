@@ -22,20 +22,28 @@ in the default arm, **no labels at all**.
 | Need | Read |
 |---|---|
 | Everything current (start here) | [CLAUDE.md](CLAUDE.md) |
-| Paper plan: figures, tables, training matrix, roadmap | [docs/v35_paper/experiment_plan.md](docs/v35_paper/experiment_plan.md) |
-| Submitted CCR2026 abstract | [docs/v35_paper/ccr2026_abstract_en.txt](docs/v35_paper/ccr2026_abstract_en.txt) |
+| Paper plan: figures, tables, training matrix, roadmap | `docs/v35_paper/experiment_plan.md` — **local only, not in this repo** |
+| Submitted CCR2026 abstract | `docs/v35_paper/ccr2026_abstract_en.txt` — **local only, not in this repo** |
 | Metric definitions + selection philosophy | [docs/validation_metrics.md](docs/validation_metrics.md) |
 | Architecture & tensor-dimension flow of this conv family | [docs/v37_legacy.md](docs/v37_legacy.md) |
 | V35 design/status record + known code faults | `docs/v35_patent_version.md` — **local only, not in this repo** (see below) |
 | Patent draft (needs a claim-order rewrite — see the V35 record) | `docs/patent_draft.md` — **local only, not in this repo** (see below) |
-| Prior art / competitor positioning | [docs/related_work.md](docs/related_work.md) |
+| Prior art / competitor positioning | `docs/related_work.md` — **local only, not in this repo** |
 | Historical material (may contain stale links) | [docs/archive/](docs/archive/) |
 
-> **The two patent documents are not in this repo.** `docs/patent_draft.md` and
-> `docs/v35_patent_version.md` are gitignored and were purged from git history on
-> 2026-08-26: the patent is unfiled and this repo is public, so committing them would be a
-> novelty-destroying disclosure. They still exist in local working copies — ask the author
-> if you need the V35 design/status record or the claim structure.
+> **Some documents are deliberately kept out of this public repo** (gitignored and purged
+> from git history on 2026-08-26). They still exist in local working copies — ask the author.
+>
+> - `docs/patent_draft.md`, `docs/v35_patent_version.md` — the patent is unfiled, so
+>   committing them to a public repo would be a novelty-destroying disclosure. The second one
+>   also holds the V35 design/status record and the known-bug list.
+> - `docs/v35_paper/` (paper plan, training matrix, CCR abstract),
+>   `docs/publishability_precedents.md`, `docs/related_work.md` — competitive strategy:
+>   the unrun experiment matrix and the submission target are what a competitor could act on.
+>
+> Engineering documentation stays in the repo: CLAUDE.md, docs/validation_metrics.md,
+> docs/multiscale_window_design.md, docs/v37_legacy.md. Code comments referencing
+> `ASL_dmvae/docs/...` point at the *other* paper line's repo, not at a missing file here.
 
 ## Two rules that keep biting
 

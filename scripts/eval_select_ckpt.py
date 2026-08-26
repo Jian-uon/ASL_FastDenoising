@@ -163,7 +163,7 @@ def _nframe_sweep(runner, n_list=(2, 4, 6, 8), seed=42) -> dict:
     Returns per-n pooled values + linear slopes vs n + the mean-drift fraction.
 
     2026-06-14: replaced the old `all_fr[:, :n]` selection, which (a) took the FIRST n
-    frames — confounded with acquisition order / bad-frame ordering (docs/cada_lr_design.md
+    frames — confounded with acquisition order / bad-frame ordering (ASL_dmvae/docs/cada_lr_design.md
     §9) — and (b) included setA padding zeros when lenA < maxTA. Now selects n random
     indices from each sample's own valid frames (seeded → reproducible across ckpts).
     """

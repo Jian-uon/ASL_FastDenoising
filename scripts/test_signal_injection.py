@@ -2,7 +2,7 @@
 """
 test_signal_injection.py — E0.3 focal-anomaly signal-preservation test.
 
-The gate's REAL job (docs/cig_vss.md, manuscript §4.4) is lesion / anomaly
+The gate's REAL job (ASL_dmvae/docs/cig_vss.md, manuscript §4.4) is lesion / anomaly
 PRESERVATION: at a genuine perfusion anomaly the ASL feature departs from its
 partial-volume tissue expectation, the evidence for the PV-tissue model falls,
 and the gate should ATTENUATE the anatomical modulation so the anomaly is kept
