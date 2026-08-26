@@ -18,6 +18,7 @@ try:
         SetTransformerAggregator,
         SpatialVaryingFrameWeighting,
         T1GuidedCoarseHead,
+        VarianceFrameAggregator,
     )
 except Exception:
     from blocks import (  # type: ignore
@@ -30,6 +31,7 @@ except Exception:
         SetTransformerAggregator,
         SpatialVaryingFrameWeighting,
         T1GuidedCoarseHead,
+        VarianceFrameAggregator,
     )
 
 try:
@@ -347,6 +349,12 @@ class ASLT1Denoiser(nn.Module):
         window_heads: int = 4,
         window_gate_init: float = -3.0,
         window_k_source: str = "t1",   # 't1' = anatomy-grouped; 'asl' = T1-free control
+        # 2026-08-26 frame aggregator: 'fra' = the 86K-param FrameReliabilityAggregator
+        # (default, unchanged); 'var' = VarianceFrameAggregator, the closed-form robust
+        # BLUE mean with a single learnable tau. Probes showed FRA's learnt policy is
+        # "veto the bad frame, 1/N on the rest", which the closed form reproduces.
+        aggregator: str = "fra",
+        agg_tau_init: float = 1.0,
         **_kwargs,  # absorbs deprecated args
     ) -> None:
         super().__init__()
@@ -426,8 +434,17 @@ class ASLT1Denoiser(nn.Module):
 
         # Frame aggregation. v37+ default = SpatialVaryingFrameWeighting (per-pixel
         # BLUE). Earlier versions = SetTransformerAggregator (per-frame scalar).
+        self.aggregator_kind = str(aggregator)
+        if self.aggregator_kind not in ("fra", "var"):
+            raise ValueError(f"aggregator must be 'fra' or 'var', got {aggregator!r}")
+        if bool(use_svfw) and self.aggregator_kind != "fra":
+            raise ValueError("use_svfw (per-pixel weighting) and aggregator='var' are mutually "
+                             "exclusive; SVFW was dropped on evidence -- see "
+                             "docs/archive/history/v42i_drop_svfw.md.")
         if bool(use_svfw):
             self.aggregator = SpatialVaryingFrameWeighting(in_ch=asl_in_ch, hidden=32)
+        elif self.aggregator_kind == "var":
+            self.aggregator = VarianceFrameAggregator(tau_init=float(agg_tau_init))
         else:
             hidden_ch = max(64, base_ch * 2)
             hidden_ch = (hidden_ch // 4) * 4  # ensure divisibility by 4 heads

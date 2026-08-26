@@ -547,6 +547,92 @@ class FrameReliabilityAggregator(nn.Module):
         return agg, weights
 
 
+class VarianceFrameAggregator(nn.Module):
+    """Closed-form robust BLUE frame aggregation — 1 parameter instead of FRA's 86K.
+
+    Iteratively-reweighted inverse-variance mean (2 IRLS steps)::
+
+        m_0   = masked_mean_t(frames)                       contaminated centre
+        s2_t  = mean_pixels[(frame_t - m)^2]                per-frame SCALAR variance
+        w     = softmax_t(-tau * log s2_t)                  tau=1 => BLUE (w ∝ 1/s2_t)
+        m_1   = sum_t w_t * frame_t                         cleaner centre; recompute w
+        agg   = sum_t w_t * frame_t
+
+    **Why a closed form is enough.** The training probes on a trained FRA show its learnt
+    policy is exactly "zero the injected bad frame, 1/N on every good frame":
+    ``probe_agg_w_bad`` went 0.0005 -> 0.0 while ``probe_agg_w_normal_per_frame`` sat at
+    1/8, 1/9, 1/7 (run_v35_win2_t1_seed42). Measured against that trained aggregator on
+    real frames, this estimator reproduces the policy — w_bad 0.0000 (FRA) vs 0.0025
+    (here), w_normal 0.1429 vs 0.1425, and both stay uniform when no frame is corrupted.
+    The transformer was spending 86K parameters learning an outlier veto.
+
+    **Why per-frame scalar and never per-pixel.** The per-pixel variant (SVFW) was measured
+    to AMPLIFY noise: 4.4x noisier than a uniform mean, and replacing it with a uniform
+    mean cut recon lapvar 49% on every subject
+    (docs/archive/history/v42i_drop_svfw.md). Per-pixel frame weighting is a closed
+    question in this repo — do not reintroduce it here.
+
+    **tau** is the one learnable parameter and doubles as a readout: tau -> 0 is the plain
+    uniform mean, tau = 1 is exact BLUE, large tau approaches winner-take-all. If training
+    drives it toward 0, the data is saying uniform averaging was already enough.
+
+    No brain mask is needed. With ``--premask_asl_inputs`` the background is 0 in every
+    frame, so it contributes 0 deviation and the resulting common factor P_brain/P_all
+    cancels inside the softmax — masked and unmasked variance give identical weights.
+
+    Same ``(agg, weights)`` interface as :class:`FrameReliabilityAggregator`, so the
+    aggregator probes and every downstream consumer are unchanged.
+    """
+
+    def __init__(self, tau_init: float = 1.0, learn_tau: bool = True,
+                 n_iter: int = 2, eps: float = 1e-8) -> None:
+        super().__init__()
+        self.n_iter = int(n_iter)
+        self.eps = float(eps)
+        if learn_tau:
+            self.tau = nn.Parameter(torch.tensor(float(tau_init)))
+        else:
+            self.register_buffer("tau", torch.tensor(float(tau_init)))
+
+    @staticmethod
+    def _valid_mask(frames: Tensor, lengths: Optional[Tensor], mask: Optional[Tensor]) -> Tensor:
+        b, t = frames.shape[:2]
+        if mask is not None and lengths is not None:
+            raise ValueError("Provide either mask or lengths, not both.")
+        if mask is not None:
+            return (~mask.bool()).to(frames.dtype)
+        if lengths is not None:
+            ar = torch.arange(t, device=frames.device).unsqueeze(0)
+            return (ar < lengths.to(frames.device).unsqueeze(1)).to(frames.dtype)
+        return torch.ones(b, t, dtype=frames.dtype, device=frames.device)
+
+    def forward(
+        self,
+        frames: Tensor,
+        lengths: Optional[Tensor] = None,
+        mask: Optional[Tensor] = None,
+    ) -> Tuple[Tensor, Tensor]:
+        if frames.ndim != 5:
+            raise ValueError(f"Expected [B,T,C,H,W], got {tuple(frames.shape)}")
+        b, t = frames.shape[:2]
+        valid = self._valid_mask(frames, lengths, mask)              # [B,T]
+        vw = valid[:, :, None, None, None]
+        n_valid = valid.sum(dim=1).clamp_min(1.0)                    # [B]
+
+        w = valid / n_valid.unsqueeze(1)                             # start: uniform over valid
+        for _ in range(max(1, self.n_iter)):
+            centre = (frames * w[:, :, None, None, None]).sum(dim=1, keepdim=True)
+            s2 = ((frames - centre).pow(2) * vw).mean(dim=(2, 3, 4))  # [B,T] scalar per frame
+            logits = -self.tau * torch.log(s2.clamp_min(self.eps))
+            logits = logits.masked_fill(valid < 0.5, float("-inf"))
+            w = torch.softmax(logits, dim=1)
+            w = torch.nan_to_num(w, nan=0.0, posinf=0.0, neginf=0.0) * valid
+            w = w / w.sum(dim=1, keepdim=True).clamp_min(1e-8)
+
+        agg = (frames * w[:, :, None, None, None]).sum(dim=1)        # [B,C,H,W]
+        return agg, w
+
+
 class SpatialVaryingFrameWeighting(nn.Module):
     """v37+ aggregator — per-pixel BLUE-style frame weighting.
 

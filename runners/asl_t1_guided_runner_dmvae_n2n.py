@@ -665,6 +665,23 @@ def parse_args():
                         "used for --init_t1_from. 'recon' = T1 autoencoder (1-ch head, "
                         "appearance features, DEFAULT); 'seg' = 4-class PV segmentation. "
                         "Sizes the frozen t1_decoder head so it loads strict.")
+    # DEFAULT is 'var' for new runs, but ASLT1Denoiser's kwarg default stays 'fra' so a
+    # pre-2026-08-26 checkpoint (whose stored arch has no `aggregator` key) still rebuilds
+    # with the transformer aggregator its weights belong to and loads strict.
+    p.add_argument("--aggregator", type=str, default="var", choices=["fra", "var"],
+                   help="Frame aggregator. 'var' (DEFAULT) = VarianceFrameAggregator: "
+                        "BLUE weighting computed in closed form from the per-frame variance, "
+                        "one learnable tau. 'fra' = the old FrameReliabilityAggregator "
+                        "(per-frame CNN + 2-layer Transformer + log-var head, 86K params), "
+                        "kept for the ablation. Probes show FRA learns exactly 'veto the bad "
+                        "frame, 1/N on the rest'; measured on real frames against a trained "
+                        "FRA, the closed form reproduces it (w_bad 0.004 vs 0.000 at sigma=1.5, "
+                        "0.001 vs 0.000 at sigma=3.0; uniform would be 0.125).")
+    p.add_argument("--agg_tau_init", type=float, default=1.0,
+                   help="Initial tau for --aggregator var. tau=1 is exact BLUE (weight "
+                        "proportional to 1/variance); tau near 0 degenerates to the plain "
+                        "uniform mean. It is learnable, so its trajectory reads out how much "
+                        "variance weighting the data actually wanted.")
     p.add_argument("--window_fusion_levels", type=int, default=0, choices=[0, 1, 2],
                    help="Multi-scale window cross-fusion on the decoder's fine scales, "
                         "counted from the finest down. 0 = off (modules are not built; "
@@ -1274,6 +1291,8 @@ class Runner:
             window_heads=int(getattr(args, "window_heads", 4)),
             window_gate_init=float(getattr(args, "window_gate_init", -3.0)),
             window_k_source=str(getattr(args, "window_k_source", "t1")),
+            aggregator=str(getattr(args, "aggregator", "fra")),
+            agg_tau_init=float(getattr(args, "agg_tau_init", 1.0)),
             zero_t1=bool(getattr(args, "zero_t1", False)),
             pv_mode=str(getattr(args, "pv_mode", "real")),
             naive_t1_concat=bool(getattr(args, "naive_t1_concat", False)),
