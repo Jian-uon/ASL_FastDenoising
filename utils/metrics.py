@@ -613,3 +613,120 @@ def hf_consistency(pred_a: Tensor, pred_b: Tensor, mask: Optional[Tensor] = None
     cov = (a * b).mean()
     corr = float((cov / (va.sqrt() * vb.sqrt()).clamp_min(eps)).item())
     return corr, float(cov.item())
+
+
+# ---------------------------------------------------------------------------
+# Medical Physics additions (2026-08-26): difference-image SNR + mutual information
+# ---------------------------------------------------------------------------
+
+def snr_difference_image(recon_a: Tensor, recon_b: Tensor, roi: Tensor,
+                         threshold: float = 0.5, eps: float = 1e-8) -> float:
+    """SNR by the two-acquisition difference method (Dietrich et al., JMRI 2007).
+
+    ``recon_a`` and ``recon_b`` are two reconstructions of the SAME subject built
+    from DISJOINT frame subsets, so their difference contains noise only::
+
+        signal = mean_ROI[ (a + b) / 2 ]
+        sigma  = std_ROI [  a - b ] / sqrt(2)
+        SNR    = signal / sigma
+
+    Why not the textbook ``mean_ROI / std_background``: this pipeline runs with
+    ``--premask_asl_inputs``, so the background is identically zero and its standard
+    deviation is 0 — the background estimator is unusable here. The difference method
+    needs no background at all, estimates the noise from the data itself, and is the
+    accepted approach for accelerated acquisitions where the noise is non-stationary.
+
+    The ROI is normally the grey-matter partial-volume map thresholded at >0.5
+    (``gm_asl.nii.gz``); GM is where ASL signal actually lives, so a whole-brain ROI
+    would dilute the numerator with WM and CSF.
+
+    Args:
+        recon_a, recon_b: [B,1,H,W] reconstructions from disjoint frame subsets
+        roi:              [B,1,H,W] soft PV map in [0,1] (grey matter by default)
+        threshold:        ROI is ``roi > threshold``
+        eps:              guards the division
+
+    Returns:
+        SNR averaged over the batch (float). Samples whose ROI holds fewer than two
+        voxels are skipped — a single voxel has no usable standard deviation.
+    """
+    if recon_a.shape != recon_b.shape or recon_a.shape != roi.shape:
+        raise ValueError(f"shape mismatch: {tuple(recon_a.shape)} / "
+                         f"{tuple(recon_b.shape)} / {tuple(roi.shape)}")
+    m = (roi > threshold)
+    mean_img = 0.5 * (recon_a + recon_b)
+    diff_img = recon_a - recon_b
+    vals = []
+    for i in range(recon_a.shape[0]):
+        sel = m[i]
+        if int(sel.sum()) < 2:
+            continue
+        signal = mean_img[i][sel].mean()
+        # unbiased std of the difference; /sqrt(2) because the difference of two
+        # independent estimates has twice the variance of a single one
+        sigma = diff_img[i][sel].std(unbiased=True) / (2.0 ** 0.5)
+        vals.append(signal / sigma.clamp_min(eps))
+    if not vals:
+        return float("nan")
+    return float(torch.stack(vals).mean())
+
+
+def mutual_information(x: Tensor, y: Tensor, mask: Optional[Tensor] = None,
+                       bins: int = 64, eps: float = 1e-12) -> float:
+    """Mutual information between two images, in BITS, over the masked region.
+
+    ``MI = sum_ij p_ij * log2( p_ij / (p_i * p_j) )`` from the joint intensity
+    histogram. Each sample is binned over its OWN min/max range, so MI is invariant
+    to a per-image affine rescale — which matters here because the ASL intensities
+    are normalised per sample by an affine estimated from the visible frames.
+
+    Two very different quantities are computed with this one function; say which one
+    a reported number is:
+
+      * ``MI(pred, reference)`` — a similarity metric. It is measured against the
+        noisy 12-NEX average, so like SSIM and psnr_ref it is a **biased** reference
+        metric and belongs in the supplementary set, never in a selection rule.
+      * ``MI(pred, T1)`` — a **leakage** metric: how much anatomical information the
+        perfusion output shares with the guidance image. The window fusion is a
+        convex combination of ASL values, so T1 content cannot enter the output by
+        construction; this is the empirical counterpart of that claim. Interpret it
+        as a comparison across arms (does MI(pred,T1) rise when T1 keys are used?),
+        not as an absolute number — perfusion and anatomy are genuinely correlated,
+        so even a T1-free reconstruction has a non-zero value.
+
+    Args:
+        x, y:  [B,1,H,W]
+        mask:  [B,1,H,W] in {0,1}; None uses every voxel
+        bins:  joint-histogram resolution per axis
+
+    Returns:
+        MI in bits, averaged over the batch.
+    """
+    if x.shape != y.shape:
+        raise ValueError(f"shape mismatch: {tuple(x.shape)} vs {tuple(y.shape)}")
+    vals = []
+    for i in range(x.shape[0]):
+        xi, yi = x[i].reshape(-1).float(), y[i].reshape(-1).float()
+        if mask is not None:
+            sel = mask[i].reshape(-1) > 0.5
+            xi, yi = xi[sel], yi[sel]
+        if xi.numel() < 2:
+            continue
+        # per-sample min/max binning => invariant to an affine rescale of either image
+        def _idx(v: Tensor) -> Tensor:
+            lo, hi = v.min(), v.max()
+            if (hi - lo) < eps:
+                return torch.zeros_like(v, dtype=torch.long)
+            return ((v - lo) / (hi - lo) * (bins - 1)).round().long().clamp(0, bins - 1)
+        xb, yb = _idx(xi), _idx(yi)
+        joint = torch.zeros(bins * bins, device=x.device, dtype=torch.float32)
+        joint.scatter_add_(0, xb * bins + yb, torch.ones_like(xb, dtype=torch.float32))
+        joint = (joint / joint.sum().clamp_min(eps)).view(bins, bins)
+        px = joint.sum(1, keepdim=True)
+        py = joint.sum(0, keepdim=True)
+        nz = joint > 0
+        mi = (joint[nz] * torch.log2(joint[nz] / (px @ py)[nz].clamp_min(eps))).sum()
+        vals.append(mi.clamp_min(0.0))
+    if not vals:
+        return float("nan")
+    return float(torch.stack(vals).mean())
