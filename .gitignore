@@ -20,6 +20,13 @@ Thumbs.db
 exp/
 logs/
 tensorboard/
+# ...but env/hpc/slurm/logs/ must EXIST in a fresh clone: Slurm creates the
+# `#SBATCH -o env/hpc/slurm/logs/...` file *before* the job script runs, so if the
+# directory is missing the job dies at launch with no output anywhere (2026-08-26).
+# The bare `logs/` rule above matches it at any depth, hence these negations —
+# the directory has to be re-included before the file inside it can be.
+!env/hpc/slurm/logs/
+!env/hpc/slurm/logs/.gitkeep
 *.pth
 *.pt
 *.ckpt

@@ -21,9 +21,16 @@
 #   NO --init_t1_from / --freeze_t1   = joint training
 #   No --amp: numerics kept identical to the local probe.
 #
-# Usage:
-#   git pull                                  # config/scripts must be pushed first
+# Usage — SUBMIT FROM THE REPO ROOT:
+#   sh env/hpc/sync_repo.sh                   # config/scripts must be pushed first
 #   yhbatch env/hpc/slurm/submit_v35_joint.sh
+#
+# ⚠ The `#SBATCH -o` path above is relative to the SUBMISSION directory, and Slurm
+#   creates that file BEFORE this script runs (so before the `cd "$REPO"` below).
+#   Submitting from elsewhere, or a missing env/hpc/slurm/logs/, makes the job die at
+#   launch with no .out, no .err and nothing in yhq — the diagnostics have nowhere to
+#   go. The directory is kept in git via .gitkeep; `mkdir -p env/hpc/slurm/logs` if in
+#   doubt. (The bare `logs/` rule in .gitignore used to swallow it — fixed 2026-08-26.)
 # Knobs: SEED=1 | MAX_STEPS=500 | EVAL_EVERY=5 | SAVE_EVERY=50 | EXTRA="--resume"
 #        WIN_LEVELS=2 WIN_K=t1|asl   window cross-fusion arms A1 / A3 (see below)
 set -eo pipefail

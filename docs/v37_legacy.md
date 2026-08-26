@@ -1,4 +1,9 @@
-# ASL_dmvae 主方法架构（v37）
+# 架构参考：conv 主方法（v37 谱系）
+
+> 本文档继承自源仓库 `ASL_dmvae`（2026-08-25 分家前），描述的是 **本仓库当前模型的直系
+> 前身**：ConvEncoder2D + 多尺度 cross-attention + T1-free detail decoder。张量维度流仍然
+> 准确，是最完整的结构参考。与今天的差异见 CLAUDE.md §3 和
+> [multiscale_window_design.md](multiscale_window_design.md)。
 
 > Last updated: 2026-05-14
 > 模型：`ASLT1Denoiser`（[models/asl_t1_model.py](../models/asl_t1_model.py)）

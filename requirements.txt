@@ -1,5 +1,11 @@
-# CIG-Net (ASL_dmvae) — Python dependencies.
+# ASL_FastDenoising — Python dependencies.
 # Target: Tianhe / NVIDIA H100 (sm_90), CUDA 12.1, Python 3.10–3.12.
+#
+# NOTE (2026-08-26): this line is conv-only. The selective-scan section at the
+# bottom is NOT required to train or evaluate it — mamba_ssm is imported behind a
+# try/except and the retired MoSSM/VMamba classes load fine without it. It is kept
+# because the Tianhe env (`asl-mamba`) is shared with the ASL_dmvae line, which does
+# need those kernels. See env/hpc/README.md.
 #
 # PyTorch is pinned to the CUDA 12.1 wheels below. The +cu121 wheels live on the
 # PyTorch index (NOT PyPI), hence the --extra-index-url line — without it pip says
@@ -27,9 +33,9 @@ matplotlib>=3.7
 Pillow>=10.0
 tensorboard>=2.14
 python-docx>=1.1          # only for exporting the paper .docx; harmless otherwise
-python-pptx>=0.6          # only for scripts/create_cignet_nature_ppt.py (figure/slide export)
+python-pptx>=0.6          # only for the figure/slide export scripts; harmless otherwise
 
-# --- selective-scan CUDA kernels (REQUIRED for usable GPU speed) ---
+# --- selective-scan CUDA kernels (NOT needed by this line; see the note above) ---
 #   `selective_scan_pytorch` (used by BOTH SS2D and the MoSSM encoder) auto-
 #   dispatches to mamba_ssm's CUDA kernel when it is importable and the tensor
 #   is on CUDA (50-100x faster on long sequences); without it the code falls

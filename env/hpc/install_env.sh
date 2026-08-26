@@ -1,14 +1,19 @@
 #!/bin/sh
 # ===========================================================================
-# CIG-Net v2 — Tianhe (天河) one-shot environment install.  SAFE TO RE-RUN.
+# ASL_FastDenoising — Tianhe (天河) one-shot environment install.  SAFE TO RE-RUN.
+#
+# You usually do NOT need this: the existing `asl-mamba` env is a superset of what
+# this conv-only line requires, and env/hpc/env.sh already defaults to it. Run this
+# only to build that env from scratch or to repair it.
 #
 # Builds the `asl-mamba` conda env end-to-end and self-heals a dirty env:
 #   1. install the pinned CUDA-12.1 PyTorch stack + project deps,
 #   2. PURGE conflicting CUDA-13 nvidia leftovers (the cuDNN-shadow bug),
 #   3. verify cuDNN actually initialises on the GPU (fail loudly if not),
 #   4. build the selective-scan CUDA kernels (causal-conv1d + mamba-ssm).
-# Without those kernels the MoSSM encoder silently falls back to a 50-100x
-# slower pure-PyTorch scan, so the build is REQUIRED for usable speed.
+# Without those kernels the MoSSM encoder silently falls back to a 50-100x slower
+# pure-PyTorch scan. That matters for the ASL_dmvae line, which shares this env;
+# THIS line never runs MoSSM/VMamba, so for it step 4 is optional.
 #
 # RUN ON A GPU NODE (torch.cuda must work for the cuDNN check + arch detect):
 #     yhrun -p gpu -N 1 --gpus-per-node=1 --cpus-per-gpu=8 --pty /bin/bash
