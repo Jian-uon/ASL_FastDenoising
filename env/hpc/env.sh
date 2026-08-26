@@ -36,12 +36,23 @@ export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
 export TRANSFORMERS_OFFLINE="${TRANSFORMERS_OFFLINE:-1}"
 export KMP_DUPLICATE_LIB_OK="${KMP_DUPLICATE_LIB_OK:-TRUE}"  # 多 OpenMP 兜底
 
+echo "[env] 1/5 paths ok: REPO_ROOT=$REPO_ROOT EXP=$EXP ENVNAME=$ENVNAME"
 # ---- 3. 目录准备 ----
 mkdir -p env/hpc/slurm/logs "$EXP/logs" "$TORCH_HOME/hub/checkpoints" "$HF_HOME"
+echo "[env] 2/5 mkdir ok"
 
 # ---- 4. conda 激活(天河用 source activate;不可用先 `module load anaconda3`)----
-source activate "$ENVNAME" 2>/dev/null || conda activate "$ENVNAME"
-which python
+# NOTE: in a Slurm batch shell `conda` is usually NOT a shell function (no .bashrc),
+# so `conda activate` can fail with "Run 'conda init' first" and exit 1 -- which under
+# `set -e` killed the job before a single line was printed. Report instead of dying.
+if source activate "$ENVNAME" 2>/dev/null; then
+  echo "[env] 3/5 conda: source activate $ENVNAME"
+elif conda activate "$ENVNAME" 2>/dev/null; then
+  echo "[env] 3/5 conda: conda activate $ENVNAME"
+else
+  echo "[env] 3/5 WARN: could not activate '$ENVNAME' -- using whatever python is on PATH"
+fi
+command -v python || echo "[env] WARN: no python on PATH"
 
 # ---- 5. CUDA module + 让 torch 自带 cuDNN 优先 ----
 # mamba 的 .so 运行期需要 CUDA 库(libcudart 等),用 CUDA module 提供。
@@ -52,9 +63,12 @@ module add "${CUDA_MODULE:-CUDA/12.1}" 2>/dev/null \
 # 覆盖系统 CUDA module 的同名库 —— 否则系统 cuDNN 会盖掉 torch 的,报
 # CUDNN_STATUS_NOT_INITIALIZED(就是之前那个错)。torch 的 cudart 同样覆盖,与 mamba 一致。
 _TORCH_NV_LIBS=$(python -c "import sysconfig,glob,os; sp=sysconfig.get_paths()['purelib']; print(':'.join(sorted(glob.glob(os.path.join(sp,'nvidia','*','lib')))))" 2>/dev/null || echo "")
-[ -n "$_TORCH_NV_LIBS" ] && export LD_LIBRARY_PATH="$_TORCH_NV_LIBS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+if [ -n "$_TORCH_NV_LIBS" ]; then
+  export LD_LIBRARY_PATH="$_TORCH_NV_LIBS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+fi
+echo "[env] 4/5 cuda/libs ok"
 
 # ---- 6. 信息打印(每个 job 日志开头都能看到环境是否正确)----
-echo "[env] node=$(hostname)  env=$ENVNAME  python=$(command -v python)"
+echo "[env] 5/5 node=$(hostname)  env=$ENVNAME  python=$(command -v python)"
 echo "[env] cuda=$(command -v nvcc >/dev/null 2>&1 && nvcc --version | grep -oE 'release [0-9.]+' | head -1 || echo none)  REPO=$REPO_ROOT  EXP=$EXP"
 echo "[env] CONFIG=$CONFIG  HF_HUB_OFFLINE=$HF_HUB_OFFLINE  TRANSFORMERS_OFFLINE=$TRANSFORMERS_OFFLINE"

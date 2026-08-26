@@ -34,6 +34,11 @@
 # Knobs: SEED=1 | MAX_STEPS=500 | EVAL_EVERY=5 | SAVE_EVERY=50 | EXTRA="--resume"
 #        WIN_LEVELS=2 WIN_K=t1|asl   window cross-fusion arms A1 / A3 (see below)
 set -eo pipefail
+# Unconditional banner BEFORE anything that can fail (cd, source env.sh). A job that
+# dies silently with an empty .out used to give no clue where; now the last line
+# printed tells you exactly how far it got. DEBUG=1 additionally turns on `set -x`.
+echo "[job] v35_joint $(date +'%F %T') host=$(hostname) jobid=${SLURM_JOB_ID:-?} pwd=$PWD"
+if [ "${DEBUG:-0}" = "1" ]; then set -x; fi
 
 REPO=${REPO:-/fs1/home/duancaohui/jian/projects/ASL_FastDenoising}   # <-- MUST be its own clone, separate from ASL_dmvae
 cd "$REPO"

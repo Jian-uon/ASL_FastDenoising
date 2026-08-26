@@ -16,6 +16,11 @@
 #
 # Knobs: SEED | MAX_STEPS | SAVE_EVERY | EXTRA="--resume"
 set -eo pipefail
+# Unconditional banner BEFORE anything that can fail (cd, source env.sh). A job that
+# dies silently with an empty .out used to give no clue where; now the last line
+# printed tells you exactly how far it got. DEBUG=1 additionally turns on `set -x`.
+echo "[job] baseline $(date +'%F %T') host=$(hostname) jobid=${SLURM_JOB_ID:-?} pwd=$PWD"
+if [ "${DEBUG:-0}" = "1" ]; then set -x; fi
 
 REPO=${REPO:-/fs1/home/duancaohui/jian/projects/ASL_FastDenoising}
 cd "$REPO"
