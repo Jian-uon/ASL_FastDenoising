@@ -682,6 +682,11 @@ def parse_args():
                         "proportional to 1/variance); tau near 0 degenerates to the plain "
                         "uniform mean. It is learnable, so its trajectory reads out how much "
                         "variance weighting the data actually wanted.")
+    p.add_argument("--freeze_agg_tau", action="store_true",
+                   help="Freeze the aggregator tau instead of learning it. With "
+                        "--agg_tau_init 0 this is the clean UNIFORM-MEAN ablation: every valid "
+                        "frame gets exactly 1/N and no variance weighting can be learnt. "
+                        "Without it, tau starts at the init value and is free to move.")
     p.add_argument("--window_fusion_levels", type=int, default=0, choices=[0, 1, 2],
                    help="Multi-scale window cross-fusion on the decoder's fine scales, "
                         "counted from the finest down. 0 = off (modules are not built; "
@@ -1293,6 +1298,7 @@ class Runner:
             window_k_source=str(getattr(args, "window_k_source", "t1")),
             aggregator=str(getattr(args, "aggregator", "fra")),
             agg_tau_init=float(getattr(args, "agg_tau_init", 1.0)),
+            agg_learn_tau=not bool(getattr(args, "freeze_agg_tau", False)),
             zero_t1=bool(getattr(args, "zero_t1", False)),
             pv_mode=str(getattr(args, "pv_mode", "real")),
             naive_t1_concat=bool(getattr(args, "naive_t1_concat", False)),

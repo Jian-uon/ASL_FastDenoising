@@ -355,6 +355,7 @@ class ASLT1Denoiser(nn.Module):
         # "veto the bad frame, 1/N on the rest", which the closed form reproduces.
         aggregator: str = "fra",
         agg_tau_init: float = 1.0,
+        agg_learn_tau: bool = True,   # False + agg_tau_init=0 => the frozen uniform mean
         **_kwargs,  # absorbs deprecated args
     ) -> None:
         super().__init__()
@@ -444,7 +445,8 @@ class ASLT1Denoiser(nn.Module):
         if bool(use_svfw):
             self.aggregator = SpatialVaryingFrameWeighting(in_ch=asl_in_ch, hidden=32)
         elif self.aggregator_kind == "var":
-            self.aggregator = VarianceFrameAggregator(tau_init=float(agg_tau_init))
+            self.aggregator = VarianceFrameAggregator(tau_init=float(agg_tau_init),
+                                                      learn_tau=bool(agg_learn_tau))
         else:
             hidden_ch = max(64, base_ch * 2)
             hidden_ch = (hidden_ch // 4) * 4  # ensure divisibility by 4 heads

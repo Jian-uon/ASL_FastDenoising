@@ -67,6 +67,9 @@ STAG=$([ "$T1_TASK" = seg ] && echo "_seg" || echo "")
 # so the fused output stays a convex combination of ASL values.
 WIN_LEVELS=${WIN_LEVELS:-0}
 WIN_K=${WIN_K:-t1}
+# Free-form tag appended to the run name, for arms that differ only by EXTRA flags
+# (e.g. NAME_SUFFIX=_agguniform EXTRA="--agg_tau_init 0 --freeze_agg_tau").
+NAME_SUFFIX=${NAME_SUFFIX:-}
 if [ "$WIN_LEVELS" -gt 0 ]; then
   WIN_FLAGS="--window_fusion_levels $WIN_LEVELS --window_k_source $WIN_K"
   WTAG="_win${WIN_LEVELS}${WIN_K}"
@@ -87,6 +90,6 @@ yhrun torchrun --nnodes=1 --nproc_per_node=1 --master_port="$MASTER_PORT" $RUNNE
   --early_stop_patience 20 --early_stop_min_evals 60 \
   --best_criterion umse --save_per_metric_best \
   $WIN_FLAGS \
-  --seed "$SEED" --name run_v35_joint${STAG}${WTAG}_seed$SEED $EXTRA
+  --seed "$SEED" --name run_v35_joint${STAG}${WTAG}${NAME_SUFFIX}_seed$SEED $EXTRA
 
-echo "[v35_joint] done -> $EXP/logs/run_v35_joint${STAG}${WTAG}_seed$SEED"
+echo "[v35_joint] done -> $EXP/logs/run_v35_joint${STAG}${WTAG}${NAME_SUFFIX}_seed$SEED"
