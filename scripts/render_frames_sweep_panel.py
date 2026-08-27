@@ -65,6 +65,9 @@ def parse_args():
     p.add_argument("--n2self", default=None)
     p.add_argument("--sup", default=None)
     p.add_argument("--swinir_sup", default=None)
+    p.add_argument("--swinir_n2n", default=None,
+                   help="SwinIR2D trained with N2N; load_unet dispatches the arch from the "
+                        "checkpoint, so this exists only to label the montage row correctly.")
     p.add_argument("--concat", default=None)
     p.add_argument("--include_naive", action="store_true", help="add the naive frame-mean column-set.")
     p.add_argument("--base_ch", type=int, default=32)
@@ -157,6 +160,10 @@ def main():
     if args.swinir_sup:
         m = ect.load_unet(args.swinir_sup, args, device)
         methods["SwinIR_sup"] = lambda pack, nf, k, m=m: ect.run_unet(
+            m, ect._presubset_pack(pack, nf, args.seed, k, device), 0, device)
+    if getattr(args, "swinir_n2n", None):
+        m = ect.load_unet(args.swinir_n2n, args, device)
+        methods["SwinIR_N2N"] = lambda pack, nf, k, m=m: ect.run_unet(
             m, ect._presubset_pack(pack, nf, args.seed, k, device), 0, device)
     if args.concat:
         m = ect.load_unet(args.concat, args, device)
