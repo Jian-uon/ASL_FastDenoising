@@ -21,7 +21,7 @@
 #   tail -f env/hpc/slurm/logs/all-<jobid>.out
 #
 # Knobs pass straight through to the two sub-scripts, e.g.
-#   K_OP=2 yhbatch env/hpc/slurm/run_all.sh
+#   K_MONTAGE="2 4" yhbatch env/hpc/slurm/run_all.sh
 #   SKIP_SELECT=1 yhbatch env/hpc/slurm/run_all.sh    # selection already done
 # ===========================================================================
 set -eu

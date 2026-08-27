@@ -30,7 +30,7 @@
 #   yhbatch env/hpc/slurm/submit_eval.sh
 #   PHASE=plots sh env/hpc/slurm/submit_eval.sh     # CPU-only, fine on the login node
 #
-# Knobs: PHASE, OUT, SPLIT, KS (swept k), K_OP (operating point), N_SUBJ
+# Knobs: PHASE, OUT, SPLIT, KS (swept k), K_MONTAGE (montage columns), N_SUBJ
 # ===========================================================================
 set -eu
 
@@ -43,7 +43,8 @@ PHASE=${PHASE:-all}
 OUT=${OUT:-$EXP/medphys_eval}
 SPLIT=${SPLIT:-test}
 KS=${KS:-"2 3 4 5 6 7 8 9"}     # uMSE needs 3 held-out frames => k <= 9
-K_OP=${K_OP:-4}                 # operating point for the montage
+K_MONTAGE=${K_MONTAGE:-"2 4 6 8"}   # the montage renders these k as columns, so the operating
+                                    # point can be chosen afterwards without re-running this job
 N_SUBJ=${N_SUBJ:-5}
 DATA_ROOT=${DATA_ROOT:-/fs1/home/duancaohui/jian/data/7T_ASL_denoising}
 mkdir -p "$OUT"
@@ -89,10 +90,10 @@ if [ "$PHASE" = all ] || [ "$PHASE" = cbf ]; then
 fi
 
 if [ "$PHASE" = all ] || [ "$PHASE" = panel ]; then
-  echo "=== [eval] qualitative montage at k=$K_OP, $N_SUBJ subjects"
+  echo "=== [eval] qualitative montage at k in {$K_MONTAGE}, $N_SUBJ subjects"
   yhrun python scripts/render_frames_sweep_panel.py \
     --config "$CONFIG" --split "$SPLIT" --seed 42 --slice_context 0 \
-    --n_frames "$K_OP" --n_subjects "$N_SUBJ" --out_dir "$OUT/panel" \
+    --n_frames $K_MONTAGE --n_subjects "$N_SUBJ" --out_dir "$OUT/panel" \
     --ours "$C42" --ours_runner_args "$(ra 42)" --ours_label "proposed" \
     --vanilla "$CPU" --swinir_n2n "$CSW" --include_naive \
     || die "render_frames_sweep_panel.py"
