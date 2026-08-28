@@ -30,7 +30,7 @@
 #   yhbatch env/hpc/slurm/submit_eval.sh
 #   PHASE=plots sh env/hpc/slurm/submit_eval.sh     # CPU-only, fine on the login node
 #
-# Knobs: PHASE, OUT, SPLIT, KS (swept k), K_MONTAGE (montage columns), N_SUBJ
+# Knobs: PHASE, OUT, SPLIT, KS, K_MONTAGE, N_SUBJ, UMSE_MAX_K
 # ===========================================================================
 set -eu
 
@@ -46,6 +46,7 @@ KS=${KS:-"2 3 4 5 6 7 8 9"}     # uMSE needs 3 held-out frames => k <= 9
 K_MONTAGE=${K_MONTAGE:-"2 4 6 8 12"}   # the montage renders these k as columns, so the operating
                                     # point can be chosen afterwards without re-running this job
 N_SUBJ=${N_SUBJ:-20}          # montage slices, spread evenly over the held-out split
+UMSE_MAX_K=${UMSE_MAX_K:-5}   # uPSNR is plotted only this far; see the plots phase
 DATA_ROOT=${DATA_ROOT:-/fs1/home/duancaohui/jian/data/7T_ASL_denoising}
 mkdir -p "$OUT"
 
@@ -109,10 +110,17 @@ fi
 
 if [ "$PHASE" = all ] || [ "$PHASE" = plots ]; then
   echo "=== [eval] figures from the CSVs (no GPU)"
-  [ -f "$OUT/sweep/comparison_summary.csv" ] || die "no comparison_summary.csv — run PHASE=sweep first"
-  python scripts/plot_degradation.py --dir "$OUT/sweep" || die "plot_degradation.py"
+  [ -f "$OUT/sweep/comparison_summary.csv" ] || die "no comparison_summary.csv -- run PHASE=sweep first"
+  # Collapse the three training runs of the proposed model into one method (band, not three
+  # lines) and average the per-batch rows within subject, since slices of one subject are
+  # not independent samples.
+  python scripts/merge_seeds.py --dir "$OUT/sweep" || die "merge_seeds.py"
+  # uMSE subtracts two nearly equal noise terms; once the held-out groups thin out it
+  # collapses to zero, so its curve is cut at UMSE_MAX_K and the plot says so.
+  python scripts/plot_degradation.py --dir "$OUT/sweep" --umse_max_k "$UMSE_MAX_K" \
+    || die "plot_degradation.py"
   python scripts/plot_sweep_boxplots.py \
-    --long_csv "$OUT/sweep/comparison_long.csv" \
+    --long_csv "$OUT/sweep/comparison_long_merged.csv" \
     --out_dir  "$OUT/sweep/figures" || die "plot_sweep_boxplots.py"
 fi
 
