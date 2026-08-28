@@ -1,0 +1,157 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""Assemble the manuscript's per-subject distribution figure.
+
+One row of four measures, one box per method, one value per held-out subject. A second row of
+paired differences was dropped: the paired test already appears as a p-value under Table 1, and
+the boxes of differences said little that the ranking did not.
+
+On the fidelity panel there is a choice with consequences, so both are buildable:
+
+  --fidelity umse   (default) keeps all subjects. uMSE is an unbiased risk estimate, so it
+                    scatters below zero wherever the true error is small; those subjects are
+                    real measurements, not failures.
+  --fidelity upsnr  matches a dB axis but silently drops every subject whose uMSE is <= 0,
+                    because the logarithm is undefined there. That loss is not uniform: it
+                    removes 25% of subjects for the proposed model and 0% for repetition
+                    averaging, i.e. it penalises exactly the methods whose error is smallest.
+                    The panel therefore prints the surviving n.
+
+Usage:
+  python scripts/make_figure3.py --dir <out>/medphys_eval --k 2 --fidelity umse
+"""
+from __future__ import annotations
+
+import argparse
+import csv
+import math
+import os
+
+os.environ.setdefault("MPLBACKEND", "Agg")
+import matplotlib
+matplotlib.use("Agg", force=True)
+import matplotlib.pyplot as plt
+
+PAPER_NAME = {
+    "naive_mean": "Repetition\naveraging",
+    "vanilla_N2N": "PlainUNet\n-N2N",
+    "SwinIR_N2N": "SwinIR\n-N2N",
+    "proposed": "Proposed",
+}
+ORDER = ["naive_mean", "vanilla_N2N", "SwinIR_N2N", "proposed"]
+COMPARATORS = ["vanilla_N2N", "SwinIR_N2N"]
+COLORS = {"naive_mean": "#b0b0b0", "vanilla_N2N": "#7fb3d5",
+          "SwinIR_N2N": "#f0b27a", "proposed": "#7dcea0"}
+
+# (key, axis label, higher-is-better). The fidelity panel's direction follows --fidelity:
+# uPSNR is higher-better, uMSE is lower-better.
+def panels(fidelity):
+    return [
+        ("fid",     None,          fidelity == "upsnr"),
+        ("cnr",     "CNR",         True),
+        ("scov_gm", "sCoV$_{GM}$", False),
+        ("snr_gm",  "SNR$_{GM}$",  True),
+    ]
+
+
+def fnum(x):
+    try:
+        v = float(x)
+        return v if math.isfinite(v) else float("nan")
+    except (TypeError, ValueError):
+        return float("nan")
+
+
+def load(path, k, fidelity):
+    """-> {method: {subject: {metric: value}}}, keeping NaN where a value is undefined."""
+    out = {}
+    for r in csv.DictReader(open(path, encoding="utf-8")):
+        if int(float(r["n_frames"])) != k:
+            continue
+        u = fnum(r["umse"])
+        if fidelity == "upsnr":
+            fid = -10.0 * math.log10(u) if u > 0 else float("nan")
+        else:
+            fid = u
+        out.setdefault(r["method"], {})[r["subject_id"]] = {
+            "fid": fid, "cnr": fnum(r["cnr"]),
+            "scov_gm": fnum(r["scov_gm"]), "snr_gm": fnum(r["snr_gm"]),
+        }
+    return out
+
+
+def box(ax, series, labels, colors, zero_line=False):
+    ok = [[v for v in s if v == v] for s in series]
+    bp = ax.boxplot(ok, patch_artist=True, widths=0.6, showfliers=False)
+    for patch, c in zip(bp["boxes"], colors):
+        patch.set_facecolor(c)
+        patch.set_alpha(0.85)
+        patch.set_edgecolor("#333333")
+    for key in ("whiskers", "caps", "medians"):
+        for art in bp[key]:
+            art.set_color("#333333")
+    for i, s in enumerate(ok, start=1):
+        ax.plot([i] * len(s), s, ".", ms=3, color="#33333355", zorder=3)
+    if zero_line:
+        ax.axhline(0.0, color="#c0392b", lw=1.2, ls="--", zorder=1)
+    ax.set_xticks(range(1, len(labels) + 1))
+    ax.set_xticklabels(labels, fontsize=8)
+    ax.grid(axis="y", alpha=0.25)
+    return ok
+
+
+def main() -> int:
+    p = argparse.ArgumentParser("assemble the per-subject distribution figure")
+    p.add_argument("--dir", required=True)
+    p.add_argument("--k", type=int, default=2)
+    p.add_argument("--fidelity", choices=["umse", "upsnr"], default="umse")
+    p.add_argument("--out", default=None)
+    p.add_argument("--dpi", type=int, default=600)
+    a = p.parse_args()
+
+    src = os.path.join(a.dir, "sweep", "comparison_long_merged.csv")
+    if not os.path.isfile(src):
+        raise SystemExit("no %s -- run merge_seeds.py first" % src)
+    data = load(src, a.k, a.fidelity)
+    methods = [m for m in ORDER if m in data]
+    fid_label = "uPSNR (dB)" if a.fidelity == "upsnr" else "uMSE"
+    PANELS = panels(a.fidelity)
+
+    subs = sorted(set.intersection(*(set(data[m]) for m in methods)))
+    print("subjects present in every method at k=%d: %d" % (a.k, len(subs)))
+
+    fig, axes = plt.subplots(1, 4, figsize=(15.0, 4.1))
+
+    for j, (key, label, _) in enumerate(PANELS):
+        ax = axes[j]
+        series = [[data[m][s][key] for s in subs] for m in methods]
+        ok = box(ax, series, [PAPER_NAME[m] for m in methods],
+                 [COLORS[m] for m in methods])
+        ax.set_ylabel(label or fid_label)
+        n = min(len(s) for s in ok)
+        title = (label or fid_label)
+        if n < len(subs):
+            title += "  (n=%d of %d)" % (n, len(subs))
+        ax.set_title(title, fontsize=10)
+
+    fig.suptitle("Per-subject distributions at %d repetitions (n=%d held-out subjects)"
+                 % (a.k, len(subs)), fontsize=12)
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
+
+    out = a.out or os.path.join(a.dir, "figures", "Figure3_%s.png" % a.fidelity)
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    fig.savefig(out, dpi=a.dpi, bbox_inches="tight")
+    plt.close(fig)
+    print("wrote %s" % out)
+
+    if a.fidelity == "upsnr":
+        for m in methods:
+            tot = len(subs)
+            ok = sum(1 for s in subs if data[m][s]["fid"] == data[m][s]["fid"])
+            print("  %-12s uPSNR defined for %2d/%d subjects (%d dropped)"
+                  % (m, ok, tot, tot - ok))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
