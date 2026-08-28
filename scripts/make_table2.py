@@ -66,44 +66,36 @@ def main() -> int:
         by.setdefault(r["n_frames"], {})[r["subject"]] = r
     ref = by[ref_k]
 
-    heads = ["Repetitions", "Scan time (% of full)", "rCBF$_{GM}$", "rCBF$_{WM}$",
-             "ICC$_{GM}$", "ICC$_{WM}$", "Bias (GM)", "95\\% LoA (GM)", "Voxelwise $r$"]
+    heads = ["Repetitions", "Scan time", "rCBF$_{GM}$", "rCBF$_{WM}$",
+             "ICC$_{GM}$", "ICC$_{WM}$", "Bias (95 % LoA), GM", "Voxelwise $r$"]
     body, n_sub = [], 0
     for s in d["summary"]:
         k = s["n_frames"]
-        row = [str(k), "%.0f" % pct(k, ref_k, a.warmup_reps),
+        row = [str(k), "%.0f %%" % pct(k, ref_k, a.warmup_reps),
                "%.3f" % s["rcbf_gm"], "%.3f" % s["rcbf_wm"]]
         if k == ref_k:
-            row[0] = "%d (full acquisition)" % k
-            row += ["reference", "", "", "", ""]
+            row[0] = "%d (full)" % k
+            row += ["--"] * 4
         else:
             ds = [by[k][x]["rcbf_gm"] - ref[x]["rcbf_gm"] for x in by[k] if x in ref]
             n_sub = max(n_sub, len(ds))
             mu = sum(ds) / len(ds)
             sd = stdev(ds)
             row += ["%.3f" % s["icc_rcbf_gm"], "%.3f" % s["icc_rcbf_wm"],
-                    "%+.3f" % s["ba_bias_rcbf_gm"],
-                    "%+.3f to %+.3f" % (mu - 1.96 * sd, mu + 1.96 * sd),
+                    "%+.3f (%+.3f, %+.3f)"
+                    % (s["ba_bias_rcbf_gm"], mu - 1.96 * sd, mu + 1.96 * sd),
                     "%.3f" % s["recon_corr"]]
         body.append(row)
 
-    warm = ("Scan time is expressed as a percentage of the full acquisition so that it "
-            "transfers to protocols with a different repetition count or repetition time, and "
-            + ("it counts the discarded first repetition, which a prospective scan still has "
-               "to acquire" if a.warmup_reps else
-               "it excludes the discarded first repetition") + ".")
+    warm = ("counting" if a.warmup_reps else "excluding")
     caption = (
-        "**Table 2. Agreement of relative CBF with the full-length acquisition.** Relative CBF "
-        "is normalized to the gray- plus white-matter mean, so it is dimensionless and centred "
-        "near one. Agreement is against the %d-repetition acquisition of the same subjects, "
-        "which is the reference and therefore has no agreement statistic of its own. ICC is "
-        "ICC(2,1), two-way random effects, single measurement, absolute agreement. Limits of "
-        "agreement are the mean difference $%spm$ 1.96 SD. Voxelwise $r$ is the Pearson "
-        "correlation of the reconstructed maps within the brain mask. All values are over the "
-        "%d held-out subjects, which is the full held-out set; Table 1 reports %d because its "
-        "measures are computed on slices and one subject supplied none that passed quality "
-        "control. %s" % (ref_k, BS, n_sub, n_sub - 1, warm))
-
+        "**Table 2. Relative CBF agreement.** Agreement of relative CBF, normalized to the "
+        "gray- plus white-matter mean, against the %d-repetition acquisition, which is the "
+        "reference and so carries no agreement statistic of its own. ICC is ICC(2,1), "
+        "absolute agreement; limits of agreement are the bias $%spm$ 1.96 SD; voxelwise $r$ "
+        "is measured within the brain mask. Scan time is a percentage of the full "
+        "acquisition, %s the discarded first repetition. n = %d held-out subjects."
+        % (ref_k, BS, warm, n_sub))
     md = [caption, "",
           "| " + " | ".join(heads) + " |",
           "|" + "|".join(["---"] * len(heads)) + "|"]
