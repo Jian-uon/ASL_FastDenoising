@@ -670,10 +670,11 @@ def _write_outputs(args, rows, pooled, eff_frames):
         w.writerow(header)
         for (m, nf), lst in sorted(by.items(), key=lambda kv: (kv[0][1], kv[0][0])):
             ssq, svc, n = pooled[(m, nf)]
-            umse_pooled = max((ssq - svc) / n, 1e-12) if n > 0 else float("nan")
-            # uPSNR from the RAW (unfloored) pooled risk; only defined for positive risk
-            # (M=1 for normalized PWI). NaN where uMSE is unavailable/≤0, never a 120 dB floor.
             raw_umse = ((ssq - svc) / n) if n > 0 else float("nan")
+            # Written unfloored: a negative pooled risk means the noise correction exceeded
+            # the squared error, which is how the estimator reports that too few repetitions
+            # were held out. uPSNR is guarded separately below and is undefined there.
+            umse_pooled = raw_umse
             upsnr_pooled = (10.0 * float(np.log10(1.0 / raw_umse))) if (n > 0 and raw_umse > 1e-8) else float("nan")
             ef = eff_frames[(m, nf)]
             eff = ef[0] / max(ef[1], 1.0)
@@ -700,7 +701,7 @@ def _write_outputs(args, rows, pooled, eff_frames):
                 continue
             ssq, svc, n = pooled[(m, nf)]
             raw_umse = ((ssq - svc) / n) if n > 0 else float("nan")
-            umse_pooled = max(raw_umse, 1e-12) if n > 0 else float("nan")
+            umse_pooled = raw_umse
             upsnr_pooled = (10.0 * float(np.log10(1.0 / raw_umse))) if (n > 0 and raw_umse > 1e-8) else float("nan")
             g = lambda key: _ms(lst, key)[0]
             f.write(f"| {m} | {umse_pooled:.5f} | {upsnr_pooled:.2f} | {g('cnr'):.3f} | {g('hfr_tcsf'):.2f} | "
