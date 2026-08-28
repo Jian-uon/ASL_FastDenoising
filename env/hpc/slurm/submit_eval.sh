@@ -43,7 +43,7 @@ PHASE=${PHASE:-all}
 OUT=${OUT:-$EXP/medphys_eval}
 SPLIT=${SPLIT:-test}
 KS=${KS:-"2 3 4 5 6 7 8 9"}     # uMSE needs 3 held-out frames => k <= 9
-K_MONTAGE=${K_MONTAGE:-"2 4 6 8"}   # the montage renders these k as columns, so the operating
+K_MONTAGE=${K_MONTAGE:-"2 4 6 8 12"}   # the montage renders these k as columns, so the operating
                                     # point can be chosen afterwards without re-running this job
 N_SUBJ=${N_SUBJ:-5}
 DATA_ROOT=${DATA_ROOT:-/fs1/home/duancaohui/jian/data/7T_ASL_denoising}
