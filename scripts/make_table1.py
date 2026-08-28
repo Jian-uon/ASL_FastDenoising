@@ -109,6 +109,33 @@ def main() -> int:
     body = [[PAPER_NAME.get(m, m)] + [cell(rows[m], c, d, sd, sd_for(m)) for c, _, d, sd in COLS]
             for m in methods]
 
+    # The full-length acquisition as it is performed today, for the short one to be read
+    # against. Its uMSE is not defined: the estimator needs held-out repetitions and this
+    # image already uses all of them. Its Laplacian variance is recovered from the ratio the
+    # sweep reports, which every method agrees on to within 3%.
+    ref_src = rows[methods[0]]
+    ref_row = ["Full acquisition (12 rep., average)"]
+    for col, _, dec, with_sd in COLS:
+        if col in ("umse_pooled", "upsnr_pooled"):
+            ref_row.append("--")
+            continue
+        if col == "lapvar_mean":
+            lv, rt = fnum(ref_src.get("lapvar_mean")), fnum(ref_src.get("lapvar_ratio_mean"))
+            ref_row.append("%.*f" % (dec, lv / rt) if (rt == rt and rt > 0) else "--")
+            continue
+        rc = {"snr_gm_mean": "snr_gm_ref_mean", "snr_wm_mean": "snr_wm_ref_mean",
+              "cnr_mean": "cnr_ref_mean"}.get(col)
+        v = fnum(ref_src.get(rc, "nan")) if rc else float("nan")
+        if v != v:
+            ref_row.append("--")
+            continue
+        txt = "%.*f" % (dec, v)
+        sd = stdev(fnum(r.get(rc.replace("_mean", ""), "nan")) for r in per_sub.get(methods[0], []))
+        if with_sd and sd == sd:
+            txt += " $" + BS + "pm$ " + "%.*f" % (dec, sd)
+        ref_row.append(txt)
+    body.append(ref_row)
+
     wp = {}
     wsrc = os.path.join(a.dir, "sweep", "wilcoxon_ours_vs_baselines.csv")
     if os.path.isfile(wsrc):

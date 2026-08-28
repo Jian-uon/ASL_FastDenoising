@@ -494,6 +494,15 @@ def main():
             # across methods (a fixed [0,1] would clip; per-method bounds would not compare).
             cnr_ref = (_cnr(union, gm, wm, threshold=0.5)
                        if (gm is not None and wm is not None) else float("nan"))
+            # The 12-repetition average is what the full-length acquisition delivers today, so
+            # it belongs in the table as a row. Its SNR is measured the same way as every
+            # method's: mean in tissue over the CSF standard deviation.
+            if csf is not None and gm is not None and wm is not None:
+                _s_ref = _masked_std(union, csf).clamp_min(1e-8)
+                snr_gm_ref = float(_masked_mean(union, gm) / _s_ref)
+                snr_wm_ref = float(_masked_mean(union, wm) / _s_ref)
+            else:
+                snr_gm_ref = snr_wm_ref = float("nan")
             _ub = union[brain > 0.5]
             if _ub.numel() > 8:
                 _ie_lo = float(torch.quantile(_ub.float(), 0.01))
@@ -588,6 +597,7 @@ def main():
                     "hfr_tcsf": float(hfr_tcsf), "tissue_hf": float(tissue_hf),
                     "hfc_corr": float(hfc_corr), "hfc_energy": float(hfc_energy),
                     "efc": float(efc_v), "cnr_ref": float(cnr_ref),
+                    "snr_gm_ref": snr_gm_ref, "snr_wm_ref": snr_wm_ref,
                     "psnr_ref": float(psnr_ref), "ssim_ref": float(ssim_ref),
                     "l1_ref": l1, "hfen": float(hfen_v),
                     "lapvar": float(lapvar_pred), "lapvar_ratio": float(lapvar_ratio),
@@ -632,6 +642,7 @@ def _ms(lst, key):
 def _write_outputs(args, rows, pooled, eff_frames):
     long_csv = os.path.join(args.out_dir, "comparison_long.csv")
     fields = ["batch", "subject_id", "n_frames", "method", "umse", "cnr", "cnr_ref",
+              "snr_gm_ref", "snr_wm_ref",
               "scov_gm", "scov_wm", "snr_gm", "snr_wm",
               "hfr_tcsf", "tissue_hf", "hfc_corr", "hfc_energy", "efc",
               "psnr_ref", "ssim_ref", "l1_ref", "hfen", "lapvar", "lapvar_ratio",
