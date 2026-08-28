@@ -63,7 +63,7 @@ def recon_fidelity(dm_n, dm_ref, brain):
 
 
 def _rcbf_png(sid, out_png, t1, dm_native, rcbf_maps, brain, ns, ref_frames, ref_cbf=None,
-              cmap="turbo", vmax=2.0, dpi=200):
+              cmap="turbo", vmax=2.0, dpi=200, erode=1):
     """rCBF montage: rows are slices, columns are T1, the denoised dM, then rCBF at every k.
 
     All rCBF panels share one window (0 .. vmax x the whole-brain mean) and one colorbar, so a
@@ -82,6 +82,15 @@ def _rcbf_png(sid, out_png, t1, dm_native, rcbf_maps, brain, ns, ref_frames, ref
         return
     accel_n = min([n for n in ns if n != ref_frames], default=ref_frames)
     b = brain > 0.5
+    if erode:
+        # CBF is dM/M0, and M0 collapses in the partial-volume shell at the brain edge, so the
+        # outermost voxels carry a bright rim that is quantification, not perfusion. It is
+        # hidden here for display only; the saved NIfTI and every reported number are untouched.
+        try:
+            from scipy.ndimage import binary_erosion
+            b = binary_erosion(b, iterations=int(erode))
+        except Exception:
+            pass
     Z = t1.shape[2]
     zs = [int(Z * f) for f in (0.4, 0.5, 0.6)]
 
@@ -175,6 +184,16 @@ def main():
     ap.add_argument("--rcbf_vmax", type=float, default=2.0,
                     help="top of the shared rCBF window, in units of the whole-brain mean.")
     ap.add_argument("--qc_dpi", type=int, default=200)
+    ap.add_argument("--show_ref_cbf", action="store_true",
+                    help="add the dataset's own cbf.nii.gz as a column. Off by default: it is "
+                         "an externally computed map whose left/right GM+WM ratio ranges from "
+                         "0.48 to 1.72 across these subjects, against 0.87-1.12 for the "
+                         "reconstructions, so it carries artefacts this study did not produce "
+                         "and does not serve as its reference. The reference here is the "
+                         "12-repetition reconstruction, already a column.")
+    ap.add_argument("--rcbf_erode", type=int, default=1,
+                    help="voxels of brain-edge erosion for the montage only. The edge shell "
+                         "carries a bright CBF rim from the M0 partial volume; 0 shows it.")
     # nominal 7T single-PLD pCASL (accel-vs-full agreement is invariant to these)
     ap.add_argument("--pld", type=float, default=1.8)
     ap.add_argument("--ld", type=float, default=1.5)
@@ -234,8 +253,13 @@ def main():
             rows.append({"subject": sid, "n_frames": n, **reg, **fid})
             if args.save_maps:
                 bm = brain > 0.5
-                rb = float(cbf[bm].mean()) if bm.any() else 1.0
-                rcbf = cbf / (rb + 1e-6) * bm                        # normalise to whole-brain mean CBF
+                # Same reference as regional_cbf: the GM+WM mean, not the whole-brain mean.
+                # The whole-brain mean is inflated by CSF and by the partial-volume rim at the
+                # brain edge, which would put the maps on a different scale from the rcbf_gm /
+                # rcbf_wm numbers reported beside them.
+                tis = (gm > 0.5) | (wm > 0.5)
+                rb = float(cbf[tis].mean()) if tis.any() else 1.0
+                rcbf = cbf / (rb + 1e-6) * bm
                 rcbf_maps[n] = rcbf
                 odir = os.path.join(args.out_dir, sid); os.makedirs(odir, exist_ok=True)
                 nib.save(nib.Nifti1Image(cbf.astype(np.float32), nat_aff), os.path.join(odir, f"cbf_n{n}.nii.gz"))
@@ -243,10 +267,17 @@ def main():
         if args.save_maps:
             t1n = _load(t1p)[0]
             refc_p = os.path.join(raw, "cbf.nii.gz")
-            refc = _load(refc_p)[0] if os.path.isfile(refc_p) else None
+            refc = _load(refc_p)[0] if (args.show_ref_cbf and os.path.isfile(refc_p)) else None
+            if refc is not None:
+                # cbf.nii.gz is absolute ml/100g/min (in-brain mean ~40); drawn on the shared
+                # 0-2 rCBF window it saturates to a solid block. Normalise it the same way.
+                _t = (gm > 0.5) | (wm > 0.5)
+                _r = float(refc[_t].mean()) if _t.any() else 0.0
+                refc = (refc / _r) if _r > 0 else None
             _rcbf_png(sid, os.path.join(args.out_dir, "qc", f"{sid}.png"),
                       t1n, dm_native, rcbf_maps, brain, ns, args.ref_frames, refc,
-                      cmap=args.rcbf_cmap, vmax=args.rcbf_vmax, dpi=args.qc_dpi)
+                      cmap=args.rcbf_cmap, vmax=args.rcbf_vmax, dpi=args.qc_dpi,
+                      erode=args.rcbf_erode)
         g = rows[-1]["cbf_gm"]
         print(f"  [ok] {sid}: n{args.ref_frames} GM-CBF={g:.1f}  (rows so far {len(rows)})")
 
