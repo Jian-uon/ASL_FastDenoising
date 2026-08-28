@@ -30,6 +30,16 @@ import argparse
 import json
 import math
 import os
+import sys
+
+# The emitted files are UTF-8, but the console echo below can land on a code page that cannot
+# represent the superscripts and the times sign (GBK on this Windows box, ASCII under some
+# batch schedulers). Echo with replacement rather than letting a display detail abort a run
+# whose output has already been written.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, OSError):
+    pass
 
 BS = chr(92)
 

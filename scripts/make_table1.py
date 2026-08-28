@@ -31,6 +31,16 @@ import argparse
 import csv
 import math
 import os
+import sys
+
+# The emitted files are UTF-8, but the console echo below can land on a code page that cannot
+# represent the superscripts and the times sign (GBK on this Windows box, ASCII under some
+# batch schedulers). Echo with replacement rather than letting a display detail abort a run
+# whose output has already been written.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, OSError):
+    pass
 
 BS = chr(92)  # the LaTeX escape, kept out of the literals below
 
@@ -49,6 +59,17 @@ COLS = [
     ("scov_gm_mean", "sCoV$_{GM}$", 3, True),
     ("snr_gm_mean",  "SNR$_{GM}$",  2, True),
 ]
+
+
+SUP = {"-": "⁻", "0": "⁰", "1": "¹", "2": "²", "3": "³",
+       "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸",
+       "9": "⁹"}
+
+
+def sci(v):
+    """4.3e-04 -> 4.3 x 10^-4, in the notation Section 3.1 already uses."""
+    m, e = ("%.1e" % v).split("e")
+    return "%s × 10%s" % (m, "".join(SUP[c] for c in str(int(e))))
 
 
 def fnum(x):
@@ -131,16 +152,13 @@ def main() -> int:
                         + [cell(m, k, c, d, sd) for c, _, d, sd in COLS])
 
     caption = (
-        "**Table 1. Reconstruction performance against the number of repetitions.** Each block "
-        "reconstructs from the stated number of acquired repetitions; repetition averaging at "
-        "the full count is the acquisition as it is performed today, and every other entry is "
-        "read against it. uMSE is pooled over the test set and therefore carries no standard "
-        "deviation, and it is reported only up to %d repetitions: it estimates the error by "
-        "subtracting a noise correction built from the repetitions left out of the "
-        "reconstruction, and once few of those remain the correction is the size of the "
-        "quantity being estimated. The remaining measures need no held-out data and are the "
-        "mean $%spm$ SD across the %d test subjects." % (a.umse_max_k, BS, n_sub))
-
+        "**Table 1. Reconstruction performance.** Each block reconstructs from the stated "
+        "number of acquired repetitions; repetition averaging at the full count is the "
+        "acquisition as it is performed today. uMSE is pooled over the test set and so carries "
+        "no standard deviation, and is left blank beyond %d repetitions, where too few are held "
+        "out for its noise correction to be meaningful. The remaining measures need no held-out "
+        "data and are the mean $%spm$ SD across the %d test subjects."
+        % (a.umse_max_k, BS, n_sub))
     md = [caption, "",
           "| " + " | ".join(heads) + " |",
           "|" + "|".join(["---"] * len(heads)) + "|"]
@@ -153,10 +171,11 @@ def main() -> int:
             if int(float(r["n_frames"])) == min(ks) and r["metric"] == "umse":
                 wp[r["baseline"]] = float(r["p_value"])
     if wp:
+        ordered = [m for m in ORDER if m in wp and m != "proposed"]
         md += ["", "Paired Wilcoxon on uMSE against the proposed model at %d repetitions: "
                % min(ks)
-               + "; ".join("%s $p$ = %.1e" % (PAPER_NAME.get(k, k), v)
-                           for k, v in sorted(wp.items()) if k in PAPER_NAME) + "."]
+               + "; ".join("%s $p$ = %s" % (PAPER_NAME.get(m, m), sci(wp[m]))
+                           for m in ordered) + "."]
 
     tex = [BS + "begin{tabular}{ll" + "r" * len(COLS) + "}", BS + "hline",
            " & ".join(heads) + " " + BS * 2, BS + "hline"]
