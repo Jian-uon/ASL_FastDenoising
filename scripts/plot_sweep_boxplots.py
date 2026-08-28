@@ -54,6 +54,11 @@ def parse_args():
     p.add_argument("--exclude_cols", nargs="*", default=[], help="extra columns to treat as non-metric")
     p.add_argument("--ncols", type=int, default=3, help="panels per row in the combined grid")
     p.add_argument("--min_finite", type=int, default=1, help="skip a metric with fewer finite values than this")
+    p.add_argument("--umse_max_k", type=int, default=0,
+                   help="drop uMSE points above this repetition count and say so in the panel "
+                        "title. The estimator subtracts two nearly equal noise terms, so past a "
+                        "point its per-subject spread is estimator noise rather than a "
+                        "difference between methods; 0 keeps every k.")
     return p.parse_args()
 
 
@@ -108,6 +113,8 @@ def main():
             arrs, poss = [], []
             for i, nf in enumerate(nfs):
                 a = d[m][nf]
+                if metric.lower() == "umse" and args.umse_max_k and nf > args.umse_max_k:
+                    a = []
                 if a:                                   # skip empty (e.g. uMSE NaN at n>=10)
                     arrs.append(a)
                     poss.append(i + (mi - (len(methods) - 1) / 2.0) * width)
@@ -120,7 +127,10 @@ def main():
             for w in bp["whiskers"] + bp["caps"]:
                 w.set(color="black", lw=0.5)
         arrow = "↓" if metric.lower() in _LOWER_BETTER else "↑"
-        ax.set_title(f"{metric} {arrow}", fontsize=10)
+        note = ""
+        if metric.lower() == "umse" and args.umse_max_k:
+            note = f"  (k<={args.umse_max_k}; the estimator collapses above)"
+        ax.set_title(f"{metric} {arrow}{note}", fontsize=10)
         ax.set_xticks(range(len(nfs)))
         ax.set_xticklabels([str(int(nf)) if nf == int(nf) else f"{nf:g}" for nf in nfs])
         ax.set_xlabel("n_frames")

@@ -121,7 +121,14 @@ if [ "$PHASE" = all ] || [ "$PHASE" = plots ]; then
     || die "plot_degradation.py"
   python scripts/plot_sweep_boxplots.py \
     --long_csv "$OUT/sweep/comparison_long_merged.csv" \
-    --out_dir  "$OUT/sweep/figures" || die "plot_sweep_boxplots.py"
+    --out_dir  "$OUT/sweep/figures" --umse_max_k "$UMSE_MAX_K" \
+    || die "plot_sweep_boxplots.py"
+  # Absolute uMSE varies far more between subjects than between methods, so boxes of
+  # absolute values overlap even where the ranking is consistent. This plots the pairing.
+  python scripts/plot_paired_diff.py \
+    --long_csv "$OUT/sweep/comparison_long_merged.csv" \
+    --out_dir  "$OUT/sweep/figures" --ref proposed --max_k "$UMSE_MAX_K" \
+    --exclude naive_mean || die "plot_paired_diff.py"
 fi
 
 echo
