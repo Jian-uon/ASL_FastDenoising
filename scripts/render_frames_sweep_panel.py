@@ -50,6 +50,8 @@ def parse_args():
     p.add_argument("--split", default="test", choices=["val", "test"])
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--slice_context", type=int, default=0, help="MUST match training (0=2D, 2=2.5D 5-slice).")
+    p.add_argument("--dpi", type=int, default=600,
+                   help="600 for print; the montage was previously written at 110")
     p.add_argument("--n_frames", type=int, nargs="+", default=[2, 4, 6, 8, 12],
                    help="input frame budgets to draw as columns (2..12 spans setA+setB pool).")
     p.add_argument("--n_subjects", type=int, default=4,
@@ -88,7 +90,15 @@ def _center_slice(x: torch.Tensor, ctx: int) -> torch.Tensor:
     return x if ctx <= 0 else x[:, ctx:ctx + 1]
 
 
-def _save_frames_grid(t1, union, grid, nframes, path, title=""):
+PAPER_NAME = {
+    "naive_mean":  "Repetition\naveraging",
+    "vanilla_N2N": "PlainUNet-N2N",
+    "SwinIR_N2N":  "SwinIR-N2N",
+    "proposed":    "Proposed",
+}
+
+
+def _save_frames_grid(t1, union, grid, nframes, path, title="", dpi=600):
     """One subject: rows = methods, cols = [12-NEX ref | each n_frames]. Shared
     in-brain window from the reference percentiles (same convention as
     eval_comparison_table._save_panel). No-op-safe on failure."""
@@ -107,23 +117,30 @@ def _save_frames_grid(t1, union, grid, nframes, path, title=""):
             vmin, vmax = float(u.min()), float(u.max() + 1e-6)
 
         methods = list(grid.keys())
-        nrow, ncol = len(methods), len(nframes) + 1
+        k_res = min(nframes)                       # residual is shown at the shortest acquisition
+        res = {m: np.abs(grid[m][k_res][0, 0].cpu().numpy() * brain - u) for m in methods}
+        rb = np.concatenate([r[brain > 0] for r in res.values()]) if brain.any() else np.array([0.0])
+        rmax = float(np.percentile(rb, 99)) if rb.size else 1.0
+        nrow, ncol = len(methods), len(nframes) + 2
         fig, ax = plt.subplots(nrow, ncol, figsize=(2.4 * ncol, 2.4 * nrow), squeeze=False)
         for r, name in enumerate(methods):
             ax[r][0].imshow(u, cmap="gray", vmin=vmin, vmax=vmax)
-            ax[r][0].set_ylabel(name, fontsize=8)
+            ax[r][0].set_ylabel(PAPER_NAME.get(name, name), fontsize=8)
             if r == 0:
-                ax[r][0].set_title("12-NEX ref", fontsize=8)
+                ax[r][0].set_title("Full acquisition\n(12 rep.)", fontsize=8)
             for c, nf in enumerate(nframes, start=1):
                 pm = grid[name][nf][0, 0].cpu().numpy() * brain
                 ax[r][c].imshow(pm, cmap="gray", vmin=vmin, vmax=vmax)
                 if r == 0:
-                    ax[r][c].set_title(f"{nf} frames", fontsize=8)
+                    ax[r][c].set_title(f"{nf} rep.", fontsize=8)
+            ax[r][ncol - 1].imshow(res[name], cmap="inferno", vmin=0.0, vmax=rmax)
+            if r == 0:
+                ax[r][ncol - 1].set_title(f"|error| at {k_res} rep.", fontsize=8)
         for a in ax.ravel():
             a.set_xticks([]); a.set_yticks([])
         fig.suptitle(f"subject {title}", fontsize=9)
         fig.tight_layout()
-        fig.savefig(path, dpi=110, bbox_inches="tight")
+        fig.savefig(path, dpi=dpi, bbox_inches="tight")
         plt.close(fig)
         print(f"[frames-montage] wrote {path}")
     except Exception as e:
@@ -210,7 +227,8 @@ def main():
         for name, fn in methods.items():
             grid[name] = {nf: fn(pack, nf, k) for nf in args.n_frames}
         _save_frames_grid(t1, union, grid, args.n_frames,
-                          os.path.join(args.out_dir, f"frames_{k:02d}_{sid}.png"), title=str(sid))
+                          os.path.join(args.out_dir, f"frames_{k:02d}_{sid}.png"),
+                          title=str(sid), dpi=args.dpi)
 
     print(f"[frames-montage] done -> {args.out_dir}  ({len(picks)} slices)")
 
