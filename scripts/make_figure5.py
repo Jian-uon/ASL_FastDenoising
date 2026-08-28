@@ -148,12 +148,22 @@ def main() -> int:
     cb.set_label("rCBF (fraction of the GM+WM mean)", fontsize=9)
 
     ax = fig.add_subplot(gs_bot[0, 0])
-    xs = [s["n_frames"] for s in d["summary"] if s["n_frames"] != ref_k]
-    for key, lab, style, col in (("icc_rcbf_gm", "ICC$_{GM}$", "o-", "#2e86c1"),
-                                 ("icc_rcbf_wm", "ICC$_{WM}$", "s-", "#1e8449"),
-                                 ("recon_corr", "Voxelwise $r$", "^--", "#b9770e")):
-        ax.plot(xs, [s[key] for s in d["summary"] if s["n_frames"] != ref_k],
-                style, label=lab, color=col)
+    srt = sorted(d["summary"], key=lambda r: r["n_frames"])
+    xs = [r["n_frames"] for r in srt]
+    for key, lab, style, mk, col in (("icc_rcbf_gm", "ICC$_{GM}$", "-", "o", "#2e86c1"),
+                                     ("icc_rcbf_wm", "ICC$_{WM}$", "-", "s", "#1e8449"),
+                                     ("recon_corr", "Voxelwise $r$", "--", "^", "#b9770e")):
+        ys = [r[key] for r in srt]
+        ax.plot(xs, ys, style, color=col)
+        # filled where the value was measured; hollow at the reference, where the three
+        # statistics are 1 by construction rather than by result
+        ax.plot([x for x in xs if x != ref_k], [y for x, y in zip(xs, ys) if x != ref_k],
+                mk, color=col, label=lab, linestyle="none")
+        ax.plot([ref_k], [dict(zip(xs, ys))[ref_k]], mk, color=col, mfc="white",
+                mew=1.4, linestyle="none")
+    ax.annotate("reference\n(identity)", (ref_k, 1.0), xytext=(-6, -14),
+                textcoords="offset points", ha="right", va="top", fontsize=8,
+                color="#555555")
     ax.set_xlabel("Repetitions entering the reconstruction")
     ax.set_ylabel("Agreement with the full acquisition")
     ax.set_xticks(xs)
