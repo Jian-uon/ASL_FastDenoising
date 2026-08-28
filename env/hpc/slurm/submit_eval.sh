@@ -80,12 +80,20 @@ fi
 
 if [ "$PHASE" = all ] || [ "$PHASE" = cbf ]; then
   echo "=== [eval] rCBF agreement vs the 12-repetition map"
-  # PLD/LD match the protocol reported in the manuscript. They cancel in rCBF,
-  # but the numbers must agree with what the paper says was acquired.
+  # eval_cbf.py enumerates the dataset itself and knows nothing about the split, so the
+  # held-out subjects must be handed to it explicitly. Left alone it takes the first N
+  # directories alphabetically, which on this dataset is ~83% training subjects.
+  TEST_SUBS=$(python scripts/dump_split.py --config "$CONFIG" --split test --sep " ") \
+    || die "dump_split.py (test subject list)"
+  echo "[eval] rCBF on $(echo $TEST_SUBS | wc -w) held-out subjects"
+  # PLD/LD match the protocol reported in the manuscript. They cancel in rCBF, but the
+  # numbers must agree with what the paper says was acquired.
   yhrun python scripts/eval_cbf.py \
     --checkpoint "$C42" --config "$CONFIG" --data_root "$DATA_ROOT" \
     --runner_args "$(ra 42)" --n_frames 2 4 6 8 --ref_frames 12 \
-    --pld 2.0 --ld 1.8 --max_subjects 40 --out_dir "$OUT/cbf" \
+    --pld 2.0 --ld 1.8 --subjects $TEST_SUBS --max_subjects 999 \
+    --save_maps --rcbf_cmap turbo --rcbf_vmax 2.0 --qc_dpi 300 \
+    --out_dir "$OUT/cbf" \
     || die "eval_cbf.py"
 fi
 

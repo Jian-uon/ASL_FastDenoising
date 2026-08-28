@@ -62,38 +62,69 @@ def recon_fidelity(dm_n, dm_ref, brain):
     return {"recon_corr": corr, "recon_nrmse": nrmse}
 
 
-def _rcbf_png(sid, out_png, t1, dm_native, rcbf_maps, brain, ns, ref_frames, ref_cbf=None):
-    """QC montage: T1 | denoised dM (accel) | rCBF accel | rCBF full | ref cbf."""
+def _rcbf_png(sid, out_png, t1, dm_native, rcbf_maps, brain, ns, ref_frames, ref_cbf=None,
+              cmap="turbo", vmax=2.0, dpi=200):
+    """rCBF montage: rows are slices, columns are T1, the denoised dM, then rCBF at every k.
+
+    All rCBF panels share one window (0 .. vmax x the whole-brain mean) and one colorbar, so a
+    column is read against the other columns instead of against its own private scale. Voxels
+    outside the brain are set to NaN rather than 0: on a blue-to-red map 0 is dark blue, which
+    would paint the background as if it carried the lowest perfusion.
+    """
     try:
-        import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        from matplotlib.cm import ScalarMappable
+        from matplotlib.colors import Normalize
     except Exception as e:
-        print(f"  [qc] matplotlib unavailable ({e}); skip PNG"); return
+        print(f"  [qc] matplotlib unavailable ({e}); skip PNG")
+        return
     accel_n = min([n for n in ns if n != ref_frames], default=ref_frames)
     b = brain > 0.5
-    Z = t1.shape[2]; zs = [int(Z * f) for f in (0.4, 0.5, 0.6)]
-    cols = [("T1", t1, "gray"),
-            (f"denoised dM  n{accel_n}", dm_native[accel_n], "gray"),
-            (f"rCBF  n{accel_n} (accel)", rcbf_maps[accel_n], "hot"),
-            (f"rCBF  n{ref_frames} (full)", rcbf_maps[ref_frames], "hot")]
+    Z = t1.shape[2]
+    zs = [int(Z * f) for f in (0.4, 0.5, 0.6)]
+
+    cols = [("T1", t1, "gray", None),
+            (rf"denoised $\Delta$M, {accel_n} rep", dm_native[accel_n], "gray", None)]
+    for n in sorted(rcbf_maps):
+        lab = f"rCBF, {n} rep" + (" (full)" if n == ref_frames else "")
+        cols.append((lab, rcbf_maps[n], cmap, (0.0, float(vmax))))
     if ref_cbf is not None:
-        cols.append(("ref cbf.nii.gz", ref_cbf, "hot"))
-    fig, ax = plt.subplots(len(zs), len(cols), figsize=(2.4 * len(cols), 2.4 * len(zs)))
+        cols.append(("reference CBF", ref_cbf, cmap, (0.0, float(vmax))))
+
+    fig, ax = plt.subplots(len(zs), len(cols),
+                           figsize=(2.2 * len(cols) + 0.8, 2.2 * len(zs)))
     ax = np.atleast_2d(ax)
+    cbar_axes = []
     for ri, z in enumerate(zs):
-        for ci, (title, vol, cmap) in enumerate(cols):
-            axx = ax[ri, ci]; img = vol[:, :, z]
-            if title.startswith("rCBF"):
-                vmin, vmax = 0.0, 2.0
-            elif "cbf" in title.lower():
-                vv = vol[b]; vmin, vmax = 0.0, (float(np.percentile(vv, 95)) if vv.size else 1.0)
+        for ci, (title, vol, cm, win) in enumerate(cols):
+            axx = ax[ri, ci]
+            img = vol[:, :, z]
+            if win is not None:
+                img = np.where(b[:, :, z], img, np.nan)      # background stays unpainted
+                vmin, vhi = win
+                cbar_axes.append(axx)
             else:
                 vv = img[img != 0]
-                vmin, vmax = (float(np.percentile(vv, 2)), float(np.percentile(vv, 98))) if vv.size else (0.0, 1.0)
-            axx.imshow(np.rot90(img), cmap=cmap, vmin=vmin, vmax=max(vmax, vmin + 1e-6))
-            axx.set_title(title if ri == 0 else "", fontsize=8); axx.axis("off")
-    fig.suptitle(sid, fontsize=10); fig.tight_layout()
+                vmin, vhi = ((float(np.percentile(vv, 2)), float(np.percentile(vv, 98)))
+                             if vv.size else (0.0, 1.0))
+            axx.imshow(np.rot90(img), cmap=cm, vmin=vmin, vmax=max(vhi, vmin + 1e-6),
+                       interpolation="nearest")
+            axx.set_title(title if ri == 0 else "", fontsize=9)
+            axx.axis("off")
+
+    if cbar_axes:
+        sm = ScalarMappable(norm=Normalize(vmin=0.0, vmax=float(vmax)),
+                            cmap=plt.get_cmap(cmap))
+        cb = fig.colorbar(sm, ax=cbar_axes, fraction=0.020, pad=0.012)
+        cb.set_label("rCBF (fraction of whole-brain mean)", fontsize=9)
+        cb.ax.tick_params(labelsize=8)
+
+    fig.suptitle(sid, fontsize=11)
     os.makedirs(os.path.dirname(out_png), exist_ok=True)
-    fig.savefig(out_png, dpi=110, bbox_inches="tight"); plt.close(fig)
+    fig.savefig(out_png, dpi=int(dpi), bbox_inches="tight")
+    plt.close(fig)
     print(f"  [qc] {out_png}")
 
 
@@ -138,6 +169,12 @@ def main():
     ap.add_argument("--out_dir", default="./exp/eval_cbf")
     ap.add_argument("--save_maps", action="store_true",
                     help="save per-subject CBF/rCBF NIfTI + a QC montage PNG")
+    ap.add_argument("--rcbf_cmap", default="turbo",
+                    help="colormap for the rCBF panels; 'turbo' is the blue-to-red ramp with "
+                         "jet's appearance but without its perceptual false edges.")
+    ap.add_argument("--rcbf_vmax", type=float, default=2.0,
+                    help="top of the shared rCBF window, in units of the whole-brain mean.")
+    ap.add_argument("--qc_dpi", type=int, default=200)
     # nominal 7T single-PLD pCASL (accel-vs-full agreement is invariant to these)
     ap.add_argument("--pld", type=float, default=1.8)
     ap.add_argument("--ld", type=float, default=1.5)
@@ -208,7 +245,8 @@ def main():
             refc_p = os.path.join(raw, "cbf.nii.gz")
             refc = _load(refc_p)[0] if os.path.isfile(refc_p) else None
             _rcbf_png(sid, os.path.join(args.out_dir, "qc", f"{sid}.png"),
-                      t1n, dm_native, rcbf_maps, brain, ns, args.ref_frames, refc)
+                      t1n, dm_native, rcbf_maps, brain, ns, args.ref_frames, refc,
+                      cmap=args.rcbf_cmap, vmax=args.rcbf_vmax, dpi=args.qc_dpi)
         g = rows[-1]["cbf_gm"]
         print(f"  [ok] {sid}: n{args.ref_frames} GM-CBF={g:.1f}  (rows so far {len(rows)})")
 
