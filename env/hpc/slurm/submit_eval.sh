@@ -30,7 +30,7 @@
 #   yhbatch env/hpc/slurm/submit_eval.sh
 #   PHASE=plots sh env/hpc/slurm/submit_eval.sh     # CPU-only, fine on the login node
 #
-# Knobs: PHASE, OUT, SPLIT, KS, K_MONTAGE, N_SUBJ, UMSE_MAX_K
+# Knobs: PHASE, OUT, SPLIT, KS, K_CBF, K_MONTAGE, N_SUBJ, UMSE_MAX_K
 # ===========================================================================
 set -eu
 
@@ -47,6 +47,8 @@ K_MONTAGE=${K_MONTAGE:-"2 4 6 8 12"}   # the montage renders these k as columns,
                                     # point can be chosen afterwards without re-running this job
 N_SUBJ=${N_SUBJ:-20}          # montage slices, spread evenly over the held-out split
 UMSE_MAX_K=${UMSE_MAX_K:-5}   # uPSNR is plotted only this far; see the plots phase
+K_CBF=${K_CBF:-"2 4 6 8 10"}  # rCBF needs no held-out frames, so it runs past the uMSE limit;
+                              # 12 is the reference and is added by --ref_frames
 DATA_ROOT=${DATA_ROOT:-/fs1/home/duancaohui/jian/data/7T_ASL_denoising}
 mkdir -p "$OUT"
 
@@ -91,7 +93,7 @@ if [ "$PHASE" = all ] || [ "$PHASE" = cbf ]; then
   # numbers must agree with what the paper says was acquired.
   yhrun python scripts/eval_cbf.py \
     --checkpoint "$C42" --config "$CONFIG" --data_root "$DATA_ROOT" \
-    --runner_args "$(ra 42)" --n_frames 2 4 6 8 --ref_frames 12 \
+    --runner_args "$(ra 42)" --n_frames $K_CBF --ref_frames 12 \
     --pld 2.0 --ld 1.8 --subjects $TEST_SUBS --max_subjects 999 \
     --save_maps --rcbf_cmap turbo --rcbf_vmax 2.0 --qc_dpi 300 \
     --out_dir "$OUT/cbf" \
