@@ -46,7 +46,7 @@ def parse_args():
     p.add_argument("--ref", default="proposed", help="method whose advantage is plotted")
     p.add_argument("--metrics", nargs="*", default=["umse", "cnr", "snr_gm", "lapvar"])
     p.add_argument("--exclude", nargs="*", default=[],
-                   help="comparators to leave out. The temporal mean differs from every network "
+                   help="comparators to leave out. Repetition averaging differs from every network "
                         "by an order of magnitude, so including it flattens the comparison that "
                         "is actually in question into an unreadable sliver.")
     p.add_argument("--max_k", type=int, default=0,
