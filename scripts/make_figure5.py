@@ -7,9 +7,9 @@ repetitions and ending at the full acquisition. Three subjects rather than one, 
 single example cannot show whether the result is typical. Every panel shares one colour scale,
 so panels are comparable to each other rather than each stretched to its own range.
 
-Bottom: Bland-Altman agreement of gray-matter rCBF against the full acquisition at the
-shortest and at a mid-length acquisition, then the agreement statistics against acquisition
-length.
+Bottom: the agreement statistics against acquisition length. The Bland-Altman scatters that
+used to sit beside them are gone -- Table 2 reports the bias and the limits of agreement as
+numbers, and the plots repeated that without adding anything.
 
 Nothing here is chosen by appearance, and every choice is printed when the script runs:
 
@@ -41,31 +41,9 @@ from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 
 
-def bland_altman(ax, acc, ref, title):
-    acc, ref = np.asarray(acc, float), np.asarray(ref, float)
-    mean, diff = 0.5 * (acc + ref), acc - ref
-    bias, sd = float(diff.mean()), float(diff.std(ddof=1))
-    lo, hi = bias - 1.96 * sd, bias + 1.96 * sd
-    ax.plot(mean, diff, "o", ms=5, color="#2e86c1", alpha=0.75, mec="#1b4f72", mew=0.5)
-    ax.axhline(bias, color="#c0392b", lw=1.4)
-    ax.axhline(lo, color="#c0392b", lw=1.0, ls="--")
-    ax.axhline(hi, color="#c0392b", lw=1.0, ls="--")
-    ax.axhline(0.0, color="#888888", lw=0.8, ls=":")
-    for y, lab in ((bias, "bias %+.3f" % bias), (hi, "+1.96 SD %+.3f" % hi),
-                   (lo, "-1.96 SD %+.3f" % lo)):
-        ax.annotate(lab, (0.99, y), xycoords=("axes fraction", "data"),
-                    ha="right", va="bottom", fontsize=7.5, color="#c0392b")
-    ax.margins(y=0.14)
-    ax.set_xlabel("Mean of the two measurements")
-    ax.set_ylabel("Accelerated $-$ full acquisition")
-    ax.set_title(title, fontsize=10)
-    ax.grid(alpha=0.25)
-
-
 def main() -> int:
     p = argparse.ArgumentParser("assemble the rCBF figure")
     p.add_argument("--dir", required=True)
-    p.add_argument("--ba_k", type=int, nargs=2, default=[2, 8])
     p.add_argument("--subject_pcts", type=float, nargs="+", default=[25, 50, 75],
                    help="percentiles of voxelwise agreement at the shortest reconstruction; "
                         "one subject per value, one row each")
@@ -141,12 +119,12 @@ def main() -> int:
     vols = rows_fig[0][1]
     kk = sorted(vols)
     nr = len(rows_fig)
-    fig = plt.figure(figsize=(15.0, 3.4 + 2.5 * nr))
+    fig = plt.figure(figsize=(13.5, 2.3 + 2.4 * nr))
     top_lo = 0.30 if nr >= 3 else 0.45
     gs_top = fig.add_gridspec(nr, len(kk), left=0.07, right=0.90,
                               top=0.95, bottom=top_lo, wspace=0.05, hspace=0.08)
-    gs_bot = fig.add_gridspec(1, 3, left=0.06, right=0.98,
-                              top=top_lo - 0.11, bottom=0.06, wspace=0.32)
+    gs_bot = fig.add_gridspec(1, 1, left=0.31, right=0.73,
+                              top=top_lo - 0.03, bottom=0.07)
 
     norm = Normalize(vmin=0.0, vmax=a.vmax)
     cm = plt.get_cmap(a.cmap).copy()
@@ -169,14 +147,7 @@ def main() -> int:
     cb = fig.colorbar(ScalarMappable(norm=norm, cmap=a.cmap), cax=cax)
     cb.set_label("rCBF (fraction of the GM+WM mean)", fontsize=9)
 
-    for i, k in enumerate(a.ba_k):
-        ax = fig.add_subplot(gs_bot[0, i])
-        subs = [s for s in by.get(k, {}) if s in ref]
-        bland_altman(ax, [by[k][s]["rcbf_gm"] for s in subs],
-                     [ref[s]["rcbf_gm"] for s in subs],
-                     "Gray matter, %d repetitions (n=%d)" % (k, len(subs)))
-
-    ax = fig.add_subplot(gs_bot[0, 2])
+    ax = fig.add_subplot(gs_bot[0, 0])
     xs = [s["n_frames"] for s in d["summary"] if s["n_frames"] != ref_k]
     for key, lab, style, col in (("icc_rcbf_gm", "ICC$_{GM}$", "o-", "#2e86c1"),
                                  ("icc_rcbf_wm", "ICC$_{WM}$", "s-", "#1e8449"),
