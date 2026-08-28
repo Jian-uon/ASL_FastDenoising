@@ -170,7 +170,16 @@ def main():
     ap.add_argument("--runner_args", default="")
     ap.add_argument("--slice_context", type=int, default=0)
     ap.add_argument("--n_frames", type=int, nargs="+", default=[2, 4, 6, 8, 10, 12])
-    ap.add_argument("--ref_frames", type=int, default=12, help="reference = model at this n")
+    ap.add_argument("--ref_frames", type=int, default=12,
+                    help="repetition count that defines the reference acquisition")
+    ap.add_argument("--ref_arm", choices=["mean", "model"], default="mean",
+                    help="what the reference IS at --ref_frames: the plain average of those "
+                         "repetitions (the acquisition as performed today, and what Sec. 3.4 "
+                         "claims) or the model's own output at that count")
+    ap.add_argument("--vanilla", default=None,
+                    help="PlainUNet-N2N checkpoint; adds a comparator arm to the maps")
+    ap.add_argument("--no_mean_arm", action="store_true",
+                    help="skip the plain-averaging arm (it costs no inference, only I/O)")
     ap.add_argument("--max_subjects", type=int, default=20)
     ap.add_argument("--subjects", nargs="+", default=None)
     ap.add_argument("--seed", type=int, default=42)
@@ -209,6 +218,11 @@ def main():
     print(f"[device] {device}  params={params}")
     model, cfg = build_model(args.runner_args, args.config, device, slice_context=args.slice_context)
     ok = load_ema(model, args.checkpoint, device)
+    van = None
+    if args.vanilla:
+        from runners.eval_baselines import load_unet
+        van = load_unet(args.vanilla, args, device)
+        print("[arm] PlainUNet-N2N loaded from %s" % args.vanilla)
     if not ok:
         print("[FATAL] arch mismatch -> fix --runner_args to match the ckpt arch; aborting.")
         sys.exit(2)
@@ -235,22 +249,57 @@ def main():
         T = nat_img.shape[-1]
         asl_vol, t1_vol, _, affine = preproc(ap_, t1p, tp, raw_dir=raw, relu_input=args.relu_input)
 
-        dm_native = {}
+        def _to_native(vol3d):
+            res = resample_from_to(nib.Nifti1Image(vol3d.astype(np.float32), affine),
+                                   (nat_shape, nat_aff), order=1, cval=0.0)
+            return np.clip(np.asarray(res.dataobj, dtype=np.float64), 0, None) * (brain > 0.5)
+
+        dm_native, dm_mean, dm_van = {}, {}, {}
         for n in ns:
             nf = min(n, T)
             pwi, nused, lo, sc = infer_volume(model, asl_vol, t1_vol, nf, device,
                                               seed=args.seed, slice_context=args.slice_context)
-            deltam_raw = pwi * sc + lo                                   # de-normalise -> raw dM (model grid)
-            res = resample_from_to(nib.Nifti1Image(deltam_raw.astype(np.float32), affine),
-                                   (nat_shape, nat_aff), order=1, cval=0.0)
-            dm_native[n] = np.clip(np.asarray(res.dataobj, dtype=np.float64), 0, None) * (brain > 0.5)
+            dm_native[n] = _to_native(pwi * sc + lo)     # de-normalise -> raw dM, then native grid
+            if van is not None:
+                vpwi, _, vlo, vsc = infer_volume(van, asl_vol, t1_vol, nf, device,
+                                                 seed=args.seed, baseline=True, slice_context=0)
+                dm_van[n] = _to_native(vpwi * vsc + vlo)
+            if not args.no_mean_arm:
+                # The same subset infer_volume drew, averaged without the network. Raw dM
+                # already, so no affine to invert.
+                idx = np.random.default_rng(args.seed).choice(T, size=nf, replace=False).tolist()
+                dm_mean[n] = _to_native(
+                    np.asarray(asl_vol[idx].mean(0).cpu().numpy(), dtype=np.float64))
 
-        ref = dm_native[args.ref_frames]
+        ref_src = dm_mean if (args.ref_arm == "mean" and dm_mean) else dm_native
+        ref = ref_src[args.ref_frames]
         rcbf_maps = {}
         for n in ns:
             reg, cbf = regional_cbf(dm_native[n], m0, brain, gm, wm, params)
             fid = recon_fidelity(dm_native[n], ref, brain)
-            rows.append({"subject": sid, "n_frames": n, **reg, **fid})
+            rows.append({"subject": sid, "n_frames": n, "arm": "model", **reg, **fid})
+            if n in dm_van:
+                vreg, vcbf = regional_cbf(dm_van[n], m0, brain, gm, wm, params)
+                vfid = recon_fidelity(dm_van[n], ref, brain)
+                rows.append({"subject": sid, "n_frames": n, "arm": "vanilla", **vreg, **vfid})
+                if args.save_maps:
+                    _t2 = (gm > 0.5) | (wm > 0.5)
+                    _r2 = float(vcbf[_t2].mean()) if _t2.any() else 1.0
+                    _o2 = os.path.join(args.out_dir, sid); os.makedirs(_o2, exist_ok=True)
+                    nib.save(nib.Nifti1Image((vcbf / (_r2 + 1e-6) * (brain > 0.5)).astype(np.float32),
+                                             nat_aff),
+                             os.path.join(_o2, f"rcbf_vanilla_n{n}.nii.gz"))
+            if n in dm_mean:
+                mreg, mcbf = regional_cbf(dm_mean[n], m0, brain, gm, wm, params)
+                mfid = recon_fidelity(dm_mean[n], ref, brain)
+                rows.append({"subject": sid, "n_frames": n, "arm": "mean", **mreg, **mfid})
+                if args.save_maps:
+                    _tis = (gm > 0.5) | (wm > 0.5)
+                    _rb = float(mcbf[_tis].mean()) if _tis.any() else 1.0
+                    _od = os.path.join(args.out_dir, sid); os.makedirs(_od, exist_ok=True)
+                    nib.save(nib.Nifti1Image((mcbf / (_rb + 1e-6) * (brain > 0.5)).astype(np.float32),
+                                             nat_aff),
+                             os.path.join(_od, f"rcbf_mean_n{n}.nii.gz"))
             if args.save_maps:
                 bm = brain > 0.5
                 # Same reference as regional_cbf: the GM+WM mean, not the whole-brain mean.
@@ -282,7 +331,10 @@ def main():
         print(f"  [ok] {sid}: n{args.ref_frames} GM-CBF={g:.1f}  (rows so far {len(rows)})")
 
     # ---- aggregate: E1 agreement (accel vs ref) + E4 degradation (full metric suite) ----
-    by_n = {n: [r for r in rows if r["n_frames"] == n] for n in ns}
+    by_n = {n: [r for r in rows if r["n_frames"] == n and r.get("arm", "model") == "model"]
+            for n in ns}
+    by_n_mean = {n: [r for r in rows if r["n_frames"] == n and r.get("arm") == "mean"]
+                 for n in ns}
     ref_n = args.ref_frames
     ref_by_sid = {r["subject"]: r for r in by_n[ref_n]}
     col = lambda d, sids, k: np.array([d[s][k] for s in sids], dtype=float)
@@ -298,12 +350,26 @@ def main():
         row["recon_nrmse"] = float(np.nanmean([cur[s]["recon_nrmse"] for s in cur]))
         if n == ref_n:
             row["icc_rcbf_gm"] = row["icc_rcbf_wm"] = 1.0; row["ba_bias_rcbf_gm"] = 0.0
+            for _t in ("gm", "wm"):
+                row[f"ba_sd_rcbf_{_t}"] = 0.0
+                row[f"ba_lo_rcbf_{_t}"] = row[f"ba_hi_rcbf_{_t}"] = 0.0
         elif len(sids) >= 2:
             row["icc_rcbf_gm"] = icc_agreement(col(cur, sids, "rcbf_gm"), col(ref_by_sid, sids, "rcbf_gm"))
             row["icc_rcbf_wm"] = icc_agreement(col(cur, sids, "rcbf_wm"), col(ref_by_sid, sids, "rcbf_wm"))
-            row["ba_bias_rcbf_gm"] = bland_altman(col(cur, sids, "rcbf_gm"), col(ref_by_sid, sids, "rcbf_gm"))["bias"]
+            # bland_altman() returns bias, SD and both limits; all of them are kept now,
+            # for gray and white matter, because the table quotes the limits.
+            for _t in ("gm", "wm"):
+                _ba = bland_altman(col(cur, sids, f"rcbf_{_t}"), col(ref_by_sid, sids, f"rcbf_{_t}"))
+                row[f"ba_bias_rcbf_{_t}"] = _ba["bias"]
+                row[f"ba_sd_rcbf_{_t}"] = _ba["sd_diff"]
+                row[f"ba_lo_rcbf_{_t}"] = _ba["loa_low"]
+                row[f"ba_hi_rcbf_{_t}"] = _ba["loa_high"]
         else:
             row["icc_rcbf_gm"] = row["icc_rcbf_wm"] = row["ba_bias_rcbf_gm"] = float("nan")
+        # the averaging arm's own regional values, for the figure's comparison row
+        _m = {r["subject"]: r for r in by_n_mean.get(n, [])}
+        for k in ("cbf_gm", "cbf_wm", "rcbf_gm", "rcbf_wm"):
+            row["mean_" + k] = (float(np.nanmean([_m[s][k] for s in _m])) if _m else float("nan"))
         summary.append(row)
 
     print("\n=== E4 degradation + E1 agreement (ref = model @ n%d, %d subjects) ===" % (ref_n, len(ref_by_sid)))
