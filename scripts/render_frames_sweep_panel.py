@@ -52,7 +52,14 @@ def parse_args():
     p.add_argument("--slice_context", type=int, default=0, help="MUST match training (0=2D, 2=2.5D 5-slice).")
     p.add_argument("--n_frames", type=int, nargs="+", default=[2, 4, 6, 8, 12],
                    help="input frame budgets to draw as columns (2..12 spans setA+setB pool).")
-    p.add_argument("--n_subjects", type=int, default=4, help="how many example subjects (one PNG each).")
+    p.add_argument("--n_subjects", type=int, default=4,
+                   help="how many example slices to render (one PNG each).")
+    p.add_argument("--first", action="store_true",
+                   help="take the first N batches instead of spreading the picks evenly "
+                        "across the split. The dataset is flattened per slice and loaded "
+                        "unshuffled, so the first N batches are adjacent slices of the "
+                        "first subject or two -- fine for a smoke test, useless for "
+                        "choosing figure candidates.")
     p.add_argument("--max_samples", type=int, default=0, help="0=all val batches; >0 = smoke subset.")
     p.add_argument("--out_dir", required=True)
     # ours + ablations (runner machinery). --extra_runner repeatable: 'LABEL::CKPT::RUNNER_ARGS'.
@@ -181,9 +188,17 @@ def main():
 
     if not methods:
         raise SystemExit("[frames-montage] no methods given (need --ours / --extra_runner / --vanilla / ...).")
-    print(f"[2/2] rendering {K} subjects x {len(methods)} methods x {len(args.n_frames)} frame budgets ...")
+    print(f"[2/2] rendering {K} slices x {len(methods)} methods x {len(args.n_frames)} frame budgets ...")
 
-    for k in range(K):
+    # Even picks across the whole split, so K images span the held-out subjects rather than
+    # K neighbouring slices of the first one.
+    if args.first or K >= len(val_data):
+        picks = list(range(min(K, len(val_data))))
+    else:
+        picks = [round(i * (len(val_data) - 1) / (K - 1)) for i in range(K)] if K > 1 else [0]
+    print(f"[2/2] picks {picks[:6]}{' ...' if len(picks) > 6 else ''} of {len(val_data)} batches")
+
+    for k in picks:
         pack = val_data[k]
         union = ect.direct_mean_from_frames(
             torch.cat([pack["setA"].to(device), pack["setB"].to(device)], dim=1))
@@ -197,7 +212,7 @@ def main():
         _save_frames_grid(t1, union, grid, args.n_frames,
                           os.path.join(args.out_dir, f"frames_{k:02d}_{sid}.png"), title=str(sid))
 
-    print(f"[frames-montage] done -> {args.out_dir}  ({K} subjects)")
+    print(f"[frames-montage] done -> {args.out_dir}  ({len(picks)} slices)")
 
 
 if __name__ == "__main__":
