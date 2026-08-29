@@ -44,10 +44,10 @@ from matplotlib.colors import Normalize
 def main() -> int:
     p = argparse.ArgumentParser("assemble the rCBF figure")
     p.add_argument("--dir", required=True)
-    p.add_argument("--subject_pcts", type=float, nargs="+", default=[25, 50, 75],
+    p.add_argument("--subject_pcts", type=float, nargs="+", default=[10, 50, 90],
                    help="percentiles of voxelwise agreement at the shortest reconstruction; "
                         "one subject per value, one row each")
-    p.add_argument("--slice_frac", type=float, default=0.5,
+    p.add_argument("--slice_frac", type=float, default=0.38,
                    help="where the displayed slice sits in each subject's brain-bearing range")
     p.add_argument("--data_root", default="D:/data/ASL/ASL_denoising_dataset/data",
                    help="dataset root, for brain_mask_asl.nii.gz")
@@ -120,12 +120,12 @@ def main() -> int:
     vols = rows_fig[0][1]
     kk = sorted(vols)
     nr = len(rows_fig)
-    fig = plt.figure(figsize=(13.5, 2.3 + 2.4 * nr))
-    top_lo = 0.30 if nr >= 3 else 0.45
+    fig = plt.figure(figsize=(13.5, 2.7 + 2.4 * nr))
+    top_lo = 0.36 if nr >= 3 else 0.48
     gs_top = fig.add_gridspec(nr, len(kk), left=0.07, right=0.90,
                               top=0.95, bottom=top_lo, wspace=0.05, hspace=0.08)
     gs_bot = fig.add_gridspec(1, 1, left=0.31, right=0.73,
-                              top=top_lo - 0.03, bottom=0.07)
+                              top=top_lo - 0.07, bottom=0.06)
 
     norm = Normalize(vmin=0.0, vmax=a.vmax)
     cm = plt.get_cmap(a.cmap).copy()
