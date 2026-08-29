@@ -66,6 +66,7 @@ def main() -> int:
     cbf = os.path.join(a.dir, "cbf")
     d = json.load(open(os.path.join(cbf, "cbf_eval.json"), encoding="utf-8"))
     ref_k = d["ref_frames"]
+    ref_arm = d.get("params", {}).get("ref_arm", "model")
     ks = [s["n_frames"] for s in d["summary"]]
 
     by = {}
@@ -159,15 +160,19 @@ def main() -> int:
         # statistics are 1 by construction rather than by result
         ax.plot([x for x in xs if x != ref_k], [y for x, y in zip(xs, ys) if x != ref_k],
                 mk, color=col, label=lab, linestyle="none")
-        ax.plot([ref_k], [dict(zip(xs, ys))[ref_k]], mk, color=col, mfc="white",
-                mew=1.4, linestyle="none")
-    ax.annotate("reference\n(identity)", (ref_k, 1.0), xytext=(-6, -14),
-                textcoords="offset points", ha="right", va="top", fontsize=8,
-                color="#555555")
+        if ref_arm == "model":
+            ax.plot([ref_k], [dict(zip(xs, ys))[ref_k]], mk, color=col, mfc="white",
+                    mew=1.4, linestyle="none")
+    if ref_arm == "model":
+        ax.annotate("reference\n(identity)", (ref_k, 1.0), xytext=(-6, -14),
+                    textcoords="offset points", ha="right", va="top", fontsize=8,
+                    color="#555555")
     ax.set_xlabel("Repetitions entering the reconstruction")
     ax.set_ylabel("Agreement with the full acquisition")
     ax.set_xticks(xs)
-    ax.set_ylim(0.80, 1.005)
+    lo = min(min(r[k] for r in d["summary"])
+             for k in ("icc_rcbf_gm", "icc_rcbf_wm", "recon_corr"))
+    ax.set_ylim(max(0.0, lo - 0.05), 1.005)
     ax.grid(alpha=0.25)
     ax.legend(fontsize=8, loc="lower right")
     ax.set_title("Agreement against acquisition length", fontsize=10)

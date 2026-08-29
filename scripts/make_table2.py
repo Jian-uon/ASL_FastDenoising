@@ -71,10 +71,12 @@ def main() -> int:
     d = json.load(open(src, encoding="utf-8"))
     ref_k = d["ref_frames"]
 
+    ref_arm = d.get("params", {}).get("ref_arm", "model")
     by = {}
     for r in d["rows"]:
-        by.setdefault(r["n_frames"], {})[r["subject"]] = r
-    ref = by[ref_k]
+        if r.get("arm", "model") == "model":
+            by.setdefault(r["n_frames"], {})[r["subject"]] = r
+    n_sub_rows = len(by.get(ref_k, {}))
 
     heads = ["Repetitions", "Scan time", "rCBF$_{GM}$", "rCBF$_{WM}$",
              "ICC$_{GM}$", "ICC$_{WM}$", "Bias (95 % LoA), GM", "Voxelwise $r$"]
@@ -83,17 +85,16 @@ def main() -> int:
         k = s["n_frames"]
         row = [str(k), "%.0f %%" % pct(k, ref_k, a.warmup_reps),
                "%.3f" % s["rcbf_gm"], "%.3f" % s["rcbf_wm"]]
+        n_sub = max(n_sub, n_sub_rows)
         if k == ref_k:
             row[0] = "%d (full)" % k
+        if k == ref_k and ref_arm == "model":
+            # the reference compared with itself: one, zero and one by construction
             row += ["--"] * 4
         else:
-            ds = [by[k][x]["rcbf_gm"] - ref[x]["rcbf_gm"] for x in by[k] if x in ref]
-            n_sub = max(n_sub, len(ds))
-            mu = sum(ds) / len(ds)
-            sd = stdev(ds)
             row += ["%.3f" % s["icc_rcbf_gm"], "%.3f" % s["icc_rcbf_wm"],
                     "%+.3f (%+.3f, %+.3f)"
-                    % (s["ba_bias_rcbf_gm"], mu - 1.96 * sd, mu + 1.96 * sd),
+                    % (s["ba_bias_rcbf_gm"], s["ba_lo_rcbf_gm"], s["ba_hi_rcbf_gm"]),
                     "%.3f" % s["recon_corr"]]
         body.append(row)
 
@@ -101,7 +102,7 @@ def main() -> int:
     caption = (
         "**Table 2. Relative CBF agreement.** Agreement of relative CBF, normalized to the "
         "gray- plus white-matter mean, against the %d-repetition acquisition, which is the "
-        "reference and so carries no agreement statistic of its own. ICC is ICC(2,1), "
+        "reference. ICC is ICC(2,1), "
         "absolute agreement; limits of agreement are the bias $%spm$ 1.96 SD; voxelwise $r$ "
         "is measured within the brain mask. Scan time is a percentage of the full "
         "acquisition, %s the discarded first repetition. n = %d held-out subjects."

@@ -336,7 +336,12 @@ def main():
     by_n_mean = {n: [r for r in rows if r["n_frames"] == n and r.get("arm") == "mean"]
                  for n in ns}
     ref_n = args.ref_frames
-    ref_by_sid = {r["subject"]: r for r in by_n[ref_n]}
+    # The reference for ICC and Bland-Altman must be the same arm --ref_arm selected for the
+    # voxelwise fidelity, or the table compares the model against itself on the regional
+    # measures while comparing it against the acquisition on the spatial one.
+    ref_pool = by_n_mean if (args.ref_arm == "mean" and by_n_mean.get(ref_n)) else by_n
+    ref_by_sid = {r["subject"]: r for r in ref_pool[ref_n]}
+    print("[agreement] reference = %s arm at n=%d" % (args.ref_arm, ref_n))
     col = lambda d, sids, k: np.array([d[s][k] for s in sids], dtype=float)
     summary = []
     for n in ns:
