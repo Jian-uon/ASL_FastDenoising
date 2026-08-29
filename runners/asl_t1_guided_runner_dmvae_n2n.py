@@ -660,6 +660,11 @@ def parse_args():
                         "N2N a/b partition + the bdcyc forward) instead of a fresh pool "
                         "split. Cheaper + target-style (avoids the trivial-constant "
                         "attractor). Pair with --w_bdcyc 0 to drop the smoothing cycle.")
+    p.add_argument("--w_anat_roi", type=float, default=None,
+                   help="Override the config's T1-reconstruction loss weight. >0 restores the "
+                        "T1 decoder head and gives the T1 encoder a second gradient path "
+                        "besides the cross-attention keys, which is the architecture Figure 1 "
+                        "draws. Default None = leave the config alone.")
     p.add_argument("--t1_task", type=str, default="recon", choices=["seg", "recon"],
                    help="Frozen T1 branch pretext — MUST match the stage-1 --t1_task "
                         "used for --init_t1_from. 'recon' = T1 autoencoder (1-ch head, "
@@ -1164,6 +1169,16 @@ class Runner:
     def __init__(self, args):
         self.args = args
         self.cfg = Config(args.config)
+        # Loss-weight overrides from the command line, so an ablation sweep is one script with
+        # a flag rather than one config file per arm. Only weights the sweep varies are here;
+        # everything else stays in the config where it can be reviewed as a block.
+        for _w in ("w_anat_roi",):
+            _v = getattr(args, _w, None)
+            if _v is not None:
+                _old = float(getattr(self.cfg.asl_denoiser_train_params, _w, 0.0))
+                setattr(self.cfg.asl_denoiser_train_params, _w, float(_v))
+                logging.info("[cfg] %s overridden on the command line: %g -> %g",
+                             _w, _old, float(_v))
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logging.info(f"Using device: {self.device}")
 

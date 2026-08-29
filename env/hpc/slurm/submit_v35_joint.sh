@@ -36,6 +36,8 @@
 #   doubt. (The bare `logs/` rule in .gitignore used to swallow it — fixed 2026-08-26.)
 # Knobs: SEED=1 | MAX_STEPS=500 | EVAL_EVERY=5 | SAVE_EVERY=50 | EXTRA="--resume"
 #        WIN_LEVELS=2 WIN_K=t1|asl   window cross-fusion arms A1 / A3 (see below)
+#        W_ANAT=0.03                 T1-reconstruction loss weight; >0 restores the T1
+#                                    decoder head, which is the architecture Figure 1 draws
 set -eo pipefail
 # Unconditional banner BEFORE anything that can fail (cd, source env.sh). A job that
 # dies silently with an empty .out used to give no clue where; now the last line
@@ -70,14 +72,30 @@ STAG=$([ "$T1_TASK" = seg ] && echo "_seg" || echo "")
 # WIN_K picks the attention KEY source:
 #   t1  = anatomy-grouped cross-attention                   -> arm A1 (main)
 #   asl = self-attention control, fine scales stay T1-free  -> arm A3
-# A1 minus A3 is the net effect of anatomical guidance at the fine scales: same
-# module, same parameter count, one flag apart. Q=ASL, V=ASL-unprojected either way,
-# so the fused output stays a convex combination of ASL values.
+# A1 minus A3 isolates the FINE-SCALE keys only: both arms keep the coarse-scale T1
+# guidance (CMF0/CMF1), so it is not the net effect of anatomy overall, and the two
+# differ by the key projection, so it is not parameter-matched either. Q=ASL and
+# V=ASL-unprojected either way, so the fused output stays a convex combination.
 WIN_LEVELS=${WIN_LEVELS:-0}
 WIN_K=${WIN_K:-t1}
 # Free-form tag appended to the run name, for arms that differ only by EXTRA flags
 # (e.g. NAME_SUFFIX=_agguniform EXTRA="--agg_tau_init 0 --freeze_agg_tau").
 NAME_SUFFIX=${NAME_SUFFIX:-}
+# T1-reconstruction auxiliary loss (arm B1). At 0 the T1 branch is a pure encoder whose only
+# gradient arrives through the cross-attention keys -- nothing then constrains its features to
+# represent anatomy, which is the inertness risk CLAUDE.md notes. Above 0 the runner restores
+# the decoder head (+0.67M params) and the encoder gets a second, self-supervised gradient:
+# the target is the input T1, so training stays label-free. The guidance path itself is
+# unchanged -- K is still W_k applied to T1 features, V is still unprojected ASL -- so this
+# alters what the T1 encoder learns, not how it can influence the output.
+W_ANAT=${W_ANAT:-}
+if [ -n "$W_ANAT" ]; then
+  ANAT_FLAGS="--w_anat_roi $W_ANAT"
+  ATAG="_t1dec$(echo "$W_ANAT" | tr -d '.')"
+else
+  ANAT_FLAGS=""
+  ATAG=""
+fi
 if [ "$WIN_LEVELS" -gt 0 ]; then
   WIN_FLAGS="--window_fusion_levels $WIN_LEVELS --window_k_source $WIN_K"
   WTAG="_win${WIN_LEVELS}${WIN_K}"
@@ -88,7 +106,7 @@ fi
 # best-ckpt gate: keep the runner default (best_min_step=-1 -> falls back to
 # sure_anneal_start=200 from the config), same as the local probe.
 
-echo "=== [v35_joint] seed=$SEED max_steps=$MAX_STEPS eval_every=$EVAL_EVERY t1_task=$T1_TASK win=${WIN_LEVELS}/${WIN_K} (FRA + joint T1$STAG, no stage-1) ==="
+echo "=== [v35_joint] seed=$SEED max_steps=$MAX_STEPS eval_every=$EVAL_EVERY t1_task=$T1_TASK win=${WIN_LEVELS}/${WIN_K} w_anat_roi=${W_ANAT:-config} (FRA + joint T1$STAG, no stage-1) ==="
 yhrun torchrun --nnodes=1 --nproc_per_node=1 --master_port="$MASTER_PORT" $RUNNER \
   --config "$CONFIG" --exp "$EXP" --base_ch 32 --depth 4 \
   --use_t1_cross_fusion --t1_attn_max_tokens 1024 --t1_task $T1_TASK \
@@ -97,7 +115,7 @@ yhrun torchrun --nnodes=1 --nproc_per_node=1 --master_port="$MASTER_PORT" $RUNNE
   --max_steps "$MAX_STEPS" --eval_every "$EVAL_EVERY" \
   --early_stop_patience 20 --early_stop_min_evals 60 \
   --best_criterion umse --save_per_metric_best \
-  $WIN_FLAGS \
-  --seed "$SEED" --name run_v35_joint${STAG}${WTAG}${NAME_SUFFIX}_seed$SEED $EXTRA
+  $WIN_FLAGS $ANAT_FLAGS \
+  --seed "$SEED" --name run_v35_joint${STAG}${WTAG}${ATAG}${NAME_SUFFIX}_seed$SEED $EXTRA
 
-echo "[v35_joint] done -> $EXP/logs/run_v35_joint${STAG}${WTAG}${NAME_SUFFIX}_seed$SEED"
+echo "[v35_joint] done -> $EXP/logs/run_v35_joint${STAG}${WTAG}${ATAG}${NAME_SUFFIX}_seed$SEED"

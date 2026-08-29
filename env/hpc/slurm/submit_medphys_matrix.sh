@@ -15,15 +15,21 @@
 # Knobs:
 #   SEEDS="42 1 2"      seeds for A1 and A3 (the paired claim; do not cut below 3)
 #   A0_SEEDS="42 1 2"   seeds for A0        (set to "42" if you are short on time)
+#   B1_SEEDS="42 1 2"   seeds for the T1-decoder arm; "" skips it
+#   W_ANAT="0.03"       its T1-reconstruction weight; list several to sweep at seed 42
 #   MAX_STEPS=500
 #   GO=1                submit for real (default is a dry run)
 #
 # The matrix — 12 runs at the default seeds, 10 with A0_SEEDS="42":
 #
 #   A1  window fusion, T1 keys      x3   the method
-#   A3  window fusion, ASL keys     x3   A1 - A3 = the net effect of anatomical
-#                                        guidance: same module, same parameter
-#                                        count, one flag apart
+#   A3  window fusion, ASL keys     x3   A1 - A3 isolates the FINE-SCALE keys: both
+#                                        keep coarse-scale T1 guidance, and they
+#                                        differ by the key projection, so this is
+#                                        neither "all of anatomy" nor parameter-matched
+#   B1  A1 + T1 decoder head        x3   does a second, self-supervised gradient into
+#                                        the T1 encoder make the guidance work harder?
+#                                        B1 - A1 is the ablation of that change
 #   A0  no window fusion            x3   does the module help at all
 #   AGG uniform aggregator          x1   does inverse-variance frame weighting help
 #                                        (tau frozen at 0 => exactly 1/N per frame)
@@ -39,6 +45,8 @@ set -eu
 
 SEEDS=${SEEDS:-"42 1 2"}
 A0_SEEDS=${A0_SEEDS:-$SEEDS}
+B1_SEEDS=${B1_SEEDS:-$SEEDS}
+W_ANAT=${W_ANAT:-"0.03"}
 MAX_STEPS=${MAX_STEPS:-500}
 GO=${GO:-0}
 
@@ -77,6 +85,19 @@ done
 for s in $A0_SEEDS; do
   sub "A0  no window fusion      seed=$s" \
       "SEED=$s MAX_STEPS=$MAX_STEPS WIN_LEVELS=0 yhbatch $JOINT"
+done
+# B1: the Figure 1 architecture. The first weight in W_ANAT runs at every B1 seed; any
+# further weights run at seed 42 only, which is enough to see whether the arm is sensitive
+# to the weight without paying for a full seed set per value.
+W1=$(echo $W_ANAT | awk '{print $1}')
+for s in $B1_SEEDS; do
+  sub "B1  A1 + T1 decoder w=$W1  seed=$s" \
+      "SEED=$s MAX_STEPS=$MAX_STEPS WIN_LEVELS=2 WIN_K=t1 W_ANAT=$W1 yhbatch $JOINT"
+done
+for w in $W_ANAT; do
+  [ "$w" = "$W1" ] && continue
+  sub "B1  A1 + T1 decoder w=$w  seed=42" \
+      "SEED=42 MAX_STEPS=$MAX_STEPS WIN_LEVELS=2 WIN_K=t1 W_ANAT=$w yhbatch $JOINT"
 done
 sub "AGG uniform (tau frozen 0) seed=42" \
     "SEED=42 MAX_STEPS=$MAX_STEPS WIN_LEVELS=2 WIN_K=t1 NAME_SUFFIX=_agguniform \
