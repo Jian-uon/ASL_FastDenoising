@@ -177,7 +177,7 @@ def main() -> int:
     ax.legend(fontsize=8, loc="lower right")
     ax.set_title("Agreement against acquisition length", fontsize=10)
 
-    out = a.out or os.path.join(a.dir, "figures", "Figure5.png")
+    out = a.out or os.path.join(a.dir, "figures", "Figure4.png")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     fig.savefig(out, dpi=a.dpi)
     plt.close(fig)
