@@ -36,7 +36,7 @@ cd "$REPO"
 CONFIG=${CONFIG:-env/hpc/configs/server_v35_joint.yml}
 source env/hpc/env.sh
 
-MAIN_RUNS=${MAIN_RUNS:-"run_v35_joint_win2t1_seed42 run_v35_joint_win2t1_seed1 run_v35_joint_win2t1_seed2"}
+MAIN_RUNS=${MAIN_RUNS:-"$(cd "$EXP/logs" 2>/dev/null && ls -d run_v35_joint_* 2>/dev/null | tr '\n' ' ')"}
 BASE_RUNS=${BASE_RUNS:-"run_base_plainunet_n2n_seed42 run_base_swinir_n2n_seed42"}
 
 die() { echo "[select] FAILED at: $*" >&2; exit 1; }
@@ -50,9 +50,19 @@ for r in $MAIN_RUNS; do
   SEED=$(echo "$r" | sed 's/.*_seed//')
   echo "=== [select] $r  ($# candidate checkpoints, seed=$SEED)"
 
+  # Rebuild flags come from the run name, which submit_v35_joint.sh built from the same
+  # flags: _seg, _win<levels><t1|asl>, _t1dec<weight with p for the point>. Guessing here
+  # instead would rebuild the wrong architecture and fail the strict load.
+  case "$r" in *_seg*) TT=seg ;; *) TT=recon ;; esac
+  WIN=$(echo "$r" | sed -n 's/.*_win\([0-9]\)\(t1\|asl\).*/--window_fusion_levels \1 --window_k_source \2/p')
+  [ -n "$WIN" ] || WIN="--window_fusion_levels 0"
+  WA=$(echo "$r" | sed -n 's/.*_t1dec\([0-9p]*\).*/\1/p' | tr 'p' '.')
+  [ -n "$WA" ] && WA="--w_anat_roi $WA" || WA=""
+  echo "    [rebuild] t1_task=$TT $WIN $WA"
+
   RA="--config $CONFIG --exp $EXP --name v35_select_tmp --base_ch 32 --depth 4 \
---use_t1_cross_fusion --t1_attn_max_tokens 1024 --t1_task recon --premask_asl_inputs \
---window_fusion_levels 2 --window_k_source t1 --best_criterion umse --seed $SEED"
+--use_t1_cross_fusion --t1_attn_max_tokens 1024 --t1_task $TT --premask_asl_inputs \
+$WIN $WA --best_criterion umse --seed $SEED"
 
   yhrun python scripts/eval_select_ckpt.py \
     --ckpts "$@" --runner_args "$RA" --metric umse \

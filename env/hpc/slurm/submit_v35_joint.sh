@@ -91,7 +91,7 @@ NAME_SUFFIX=${NAME_SUFFIX:-}
 W_ANAT=${W_ANAT:-}
 if [ -n "$W_ANAT" ]; then
   ANAT_FLAGS="--w_anat_roi $W_ANAT"
-  ATAG="_t1dec$(echo "$W_ANAT" | tr -d '.')"
+  ATAG="_t1dec$(echo "$W_ANAT" | tr '.' 'p')"   # 0.03 -> 0p03, reversible by submit_select.sh
 else
   ANAT_FLAGS=""
   ATAG=""
