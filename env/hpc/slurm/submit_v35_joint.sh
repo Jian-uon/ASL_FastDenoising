@@ -38,6 +38,7 @@
 #        WIN_LEVELS=2 WIN_K=t1|asl   window cross-fusion arms A1 / A3 (see below)
 #        W_ANAT=0.03                 T1-reconstruction loss weight; >0 restores the T1
 #                                    decoder head, which is the architecture Figure 1 draws
+#        MIN_EPOCHS=200 FORCE=1      skip if already trained this far / retrain anyway
 set -eo pipefail
 # Unconditional banner BEFORE anything that can fail (cd, source env.sh). A job that
 # dies silently with an empty .out used to give no clue where; now the last line
@@ -106,6 +107,12 @@ fi
 # best-ckpt gate: keep the runner default (best_min_step=-1 -> falls back to
 # sure_anneal_start=200 from the config), same as the local probe.
 
+RUN_NAME=run_v35_joint${STAG}${WTAG}${ATAG}${NAME_SUFFIX}_seed$SEED
+. env/hpc/slurm/already_trained.sh
+if [ "${FORCE:-0}" != "1" ] && already_trained "$RUN_NAME" "${MIN_EPOCHS:-200}"; then
+  exit 0
+fi
+
 echo "=== [v35_joint] seed=$SEED max_steps=$MAX_STEPS eval_every=$EVAL_EVERY t1_task=$T1_TASK win=${WIN_LEVELS}/${WIN_K} w_anat_roi=${W_ANAT:-config} (FRA + joint T1$STAG, no stage-1) ==="
 yhrun torchrun --nnodes=1 --nproc_per_node=1 --master_port="$MASTER_PORT" $RUNNER \
   --config "$CONFIG" --exp "$EXP" --base_ch 32 --depth 4 \
@@ -116,6 +123,6 @@ yhrun torchrun --nnodes=1 --nproc_per_node=1 --master_port="$MASTER_PORT" $RUNNE
   --early_stop_patience 20 --early_stop_min_evals 60 \
   --best_criterion umse --save_per_metric_best \
   $WIN_FLAGS $ANAT_FLAGS \
-  --seed "$SEED" --name run_v35_joint${STAG}${WTAG}${ATAG}${NAME_SUFFIX}_seed$SEED $EXTRA
+  --seed "$SEED" --name "$RUN_NAME" $EXTRA
 
-echo "[v35_joint] done -> $EXP/logs/run_v35_joint${STAG}${WTAG}${ATAG}${NAME_SUFFIX}_seed$SEED"
+echo "[v35_joint] done -> $EXP/logs/$RUN_NAME"

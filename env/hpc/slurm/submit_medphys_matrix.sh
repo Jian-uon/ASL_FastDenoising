@@ -18,6 +18,8 @@
 #   B1_SEEDS="42 1 2"   seeds for the T1-decoder arm; "" skips it
 #   W_ANAT="0.03"       its T1-reconstruction weight; list several to sweep at seed 42
 #   MAX_STEPS=500
+#   MIN_EPOCHS=200      a run already trained this far is skipped, not requeued
+#   FORCE=1             queue everything regardless
 #   GO=1                submit for real (default is a dry run)
 #
 # The matrix — 12 runs at the default seeds, 10 with A0_SEEDS="42":
@@ -56,8 +58,16 @@ if [ ! -f env/hpc/slurm/submit_v35_joint.sh ]; then
 fi
 mkdir -p env/hpc/slurm/logs      # Slurm opens the -o file before the job script runs
 
+. env/hpc/slurm/already_trained.sh
 n=0
-sub() {  # sub "<label>" "<full shell command>"
+skipped=0
+sub() {  # sub "<label>" "<full shell command>" [<run name to check>]
+  if [ -n "${3:-}" ] && [ "${FORCE:-0}" != "1" ] \
+     && already_trained "$3" "${MIN_EPOCHS:-200}" >/dev/null; then
+    skipped=$((skipped + 1))
+    printf '   -- %s  [already trained]\n' "$1"
+    return
+  fi
   n=$((n + 1))
   printf '  %2d. %s\n' "$n" "$1"
   if [ "$GO" = "1" ]; then
@@ -76,15 +86,18 @@ echo
 
 for s in $SEEDS; do
   sub "A1  window + T1 keys      seed=$s" \
-      "SEED=$s MAX_STEPS=$MAX_STEPS WIN_LEVELS=2 WIN_K=t1 yhbatch $JOINT"
+      "SEED=$s MAX_STEPS=$MAX_STEPS WIN_LEVELS=2 WIN_K=t1 yhbatch $JOINT" \
+      "run_v35_joint_win2t1_seed$s"
 done
 for s in $SEEDS; do
   sub "A3  window + ASL keys     seed=$s" \
-      "SEED=$s MAX_STEPS=$MAX_STEPS WIN_LEVELS=2 WIN_K=asl yhbatch $JOINT"
+      "SEED=$s MAX_STEPS=$MAX_STEPS WIN_LEVELS=2 WIN_K=asl yhbatch $JOINT" \
+      "run_v35_joint_win2asl_seed$s"
 done
 for s in $A0_SEEDS; do
   sub "A0  no window fusion      seed=$s" \
-      "SEED=$s MAX_STEPS=$MAX_STEPS WIN_LEVELS=0 yhbatch $JOINT"
+      "SEED=$s MAX_STEPS=$MAX_STEPS WIN_LEVELS=0 yhbatch $JOINT" \
+      "run_v35_joint_seed$s"
 done
 # B1: the Figure 1 architecture. The first weight in W_ANAT runs at every B1 seed; any
 # further weights run at seed 42 only, which is enough to see whether the arm is sensitive
@@ -92,7 +105,8 @@ done
 W1=$(echo $W_ANAT | awk '{print $1}')
 for s in $B1_SEEDS; do
   sub "B1  A1 + T1 decoder w=$W1  seed=$s" \
-      "SEED=$s MAX_STEPS=$MAX_STEPS WIN_LEVELS=2 WIN_K=t1 W_ANAT=$W1 yhbatch $JOINT"
+      "SEED=$s MAX_STEPS=$MAX_STEPS WIN_LEVELS=2 WIN_K=t1 W_ANAT=$W1 yhbatch $JOINT" \
+      "run_v35_joint_win2t1_t1dec$(echo "$W1" | tr '.' 'p')_seed$s"
 done
 for w in $W_ANAT; do
   [ "$w" = "$W1" ] && continue
@@ -103,17 +117,19 @@ sub "AGG uniform (tau frozen 0) seed=42" \
     "SEED=42 MAX_STEPS=$MAX_STEPS WIN_LEVELS=2 WIN_K=t1 NAME_SUFFIX=_agguniform \
 EXTRA='--agg_tau_init 0 --freeze_agg_tau' yhbatch $JOINT"
 sub "PlainUNet-N2N             seed=42" \
-    "SEED=42 MAX_STEPS=$MAX_STEPS ARCH=plainunet yhbatch $BASE"
+    "SEED=42 MAX_STEPS=$MAX_STEPS ARCH=plainunet yhbatch $BASE" \
+    "run_base_plainunet_n2n_seed42"
 sub "SwinIR-N2N                seed=42" \
-    "SEED=42 MAX_STEPS=$MAX_STEPS ARCH=swinir yhbatch $BASE"
+    "SEED=42 MAX_STEPS=$MAX_STEPS ARCH=swinir yhbatch $BASE" \
+    "run_base_swinir_n2n_seed42"
 
 echo
 if [ "$GO" = "1" ]; then
-  echo "submitted $n jobs."
+  echo "submitted $n jobs ($skipped already trained, skipped)."
   echo "  watch:    yhq -u \$USER"
   echo "  job logs: env/hpc/slurm/logs/{v35j,base}-<jobid>.out"
   echo "  outputs:  \$EXP/logs/<run name>/"
 else
-  echo "dry run — nothing submitted ($n jobs listed above)."
+  echo "dry run — nothing submitted ($n jobs listed above, $skipped already trained)."
   echo "re-run with:  GO=1 sh env/hpc/slurm/submit_medphys_matrix.sh"
 fi

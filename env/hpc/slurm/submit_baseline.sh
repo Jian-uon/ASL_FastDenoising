@@ -34,6 +34,11 @@ nvidia-smi -L || true
 RUNNER=runners/train_baseline.py
 ARCH=${ARCH:-plainunet}
 SEED=${SEED:-42}
+RUN_NAME=run_base_${ARCH}_n2n_seed$SEED
+. env/hpc/slurm/already_trained.sh
+if [ "${FORCE:-0}" != "1" ] && already_trained "$RUN_NAME" "${MIN_EPOCHS:-200}"; then
+  exit 0
+fi
 MAX_STEPS=${MAX_STEPS:-500}
 SAVE_EVERY=${SAVE_EVERY:-50}
 EXTRA="${EXTRA:-}"
@@ -45,6 +50,6 @@ yhrun torchrun --nnodes=1 --nproc_per_node=1 --master_port="$MASTER_PORT" $RUNNE
   --save_every "$SAVE_EVERY" --save_images --log_images 10 \
   --max_steps "$MAX_STEPS" \
   --early_stop_patience 20 --early_stop_min_evals 60 \
-  --seed "$SEED" --name run_base_${ARCH}_n2n_seed$SEED $EXTRA
+  --seed "$SEED" --name "$RUN_NAME" $EXTRA
 
 echo "[baseline] done -> $EXP/logs/run_base_${ARCH}_n2n_seed$SEED"
