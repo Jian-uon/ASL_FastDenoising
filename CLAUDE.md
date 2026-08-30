@@ -236,6 +236,21 @@ Full figure/table checklist and the training matrix: `docs/v35_paper/experiment_
 
 ### Closed questions — do not re-explore
 
+- **Auxiliary T1 reconstruction (`w_anat_roi > 0`, the "B1" arm): REJECTED 2026-08-31 on
+  evidence.** Restoring the T1 decoder head gives the T1 encoder a second, self-supervised
+  gradient besides the cross-attention K-path, addressing the inertness risk in §7 item 2
+  without costing the label-free property (the target is the input T1). It was tried at
+  `w_anat_roi 0.03` and came out **worse than the encoder-only arm**, so the encoder-only arm
+  (`w_anat_roi = 0`, T1 decoder dropped, 3.45M params) remains the reference model.
+  ⟨TBD: paste the uMSE/CNR comparison from the server so this entry carries its evidence.⟩
+  The plumbing stays in place — `--w_anat_roi` on the runner, `W_ANAT` on
+  `submit_v35_joint.sh`, the B1 rows in the matrix — so the arm is one flag away if a reviewer
+  asks, but it should not be re-run speculatively.
+  *Consequence:* **Figure 1 must be corrected.** It draws the T1 decoder, a "Reconstructed T1w"
+  output and an MSE loss on it. None of the three exists in the reference model, the loss is a
+  masked L1 rather than an MSE, and the figure contradicts its own caption ("The T1 path has no
+  decoder"). It was left standing only while this arm might have won.
+
 - **Band-Limited Guidance (frequency-domain content guard): REJECTED 2026-08-25 on evidence.**
   A DWT decomposition of the mismatched-T1 leakage ([scripts/leakage_spectrum.py](scripts/leakage_spectrum.py))
   found only 12.8% of leakage energy in the detail subbands (below the pre-registered 20% GO
