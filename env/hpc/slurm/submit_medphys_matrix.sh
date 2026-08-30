@@ -15,23 +15,24 @@
 # Knobs:
 #   SEEDS="42 1 2"      seeds for A1 and A3 (the paired claim; do not cut below 3)
 #   A0_SEEDS="42 1 2"   seeds for A0        (set to "42" if you are short on time)
-#   B1_SEEDS="42 1 2"   seeds for the T1-decoder arm; "" skips it
+#   B1_SEEDS="42 1 2"   seeds for the T1-decoder arm; OFF by default (rejected 2026-08-31,
+#                       see CLAUDE.md "Closed questions") -- set it to re-run the arm
 #   W_ANAT="0.03"       its T1-reconstruction weight; list several to sweep at seed 42
 #   MAX_STEPS=500
 #   MIN_EPOCHS=200      a run already trained this far is skipped, not requeued
 #   FORCE=1             queue everything regardless
 #   GO=1                submit for real (default is a dry run)
 #
-# The matrix — 12 runs at the default seeds, 10 with A0_SEEDS="42":
+# The matrix — 12 runs at the default seeds (B1 off), 10 with A0_SEEDS="42":
 #
 #   A1  window fusion, T1 keys      x3   the method
 #   A3  window fusion, ASL keys     x3   A1 - A3 isolates the FINE-SCALE keys: both
 #                                        keep coarse-scale T1 guidance, and they
 #                                        differ by the key projection, so this is
 #                                        neither "all of anatomy" nor parameter-matched
-#   B1  A1 + T1 decoder head        x3   does a second, self-supervised gradient into
-#                                        the T1 encoder make the guidance work harder?
-#                                        B1 - A1 is the ablation of that change
+#   B1  A1 + T1 decoder head        x0   OFF: tried at w=0.03 and came out worse than
+#                                        encoder-only, so the arm is closed. B1_SEEDS
+#                                        re-enables it if a reviewer asks for the evidence.
 #   A0  no window fusion            x3   does the module help at all
 #   AGG uniform aggregator          x1   does inverse-variance frame weighting help
 #                                        (tau frozen at 0 => exactly 1/N per frame)
@@ -47,7 +48,7 @@ set -eu
 
 SEEDS=${SEEDS:-"42 1 2"}
 A0_SEEDS=${A0_SEEDS:-$SEEDS}
-B1_SEEDS=${B1_SEEDS:-$SEEDS}
+B1_SEEDS=${B1_SEEDS:-""}      # closed arm; opt in explicitly
 W_ANAT=${W_ANAT:-"0.03"}
 MAX_STEPS=${MAX_STEPS:-500}
 GO=${GO:-0}
