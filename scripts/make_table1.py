@@ -53,8 +53,8 @@ PAPER_NAME = {
 ORDER = ["naive_mean", "vanilla_N2N", "SwinIR_N2N", "proposed"]
 
 # (csv column, header, decimals, carries a +- SD) -- the same four measures as Figure 3
+# uMSE is not here: it is reported once, over the selection range, by _umse_block below.
 COLS = [
-    ("umse_pooled",  "uMSE",        5, False),
     ("cnr_mean",     "CNR",         3, True),
     ("scov_gm_mean", "sCoV$_{GM}$", 3, True),
     ("snr_gm_mean",  "SNR$_{GM}$",  2, True),
@@ -88,6 +88,27 @@ def stdev(vals):
     return (sum((x - mu) ** 2 for x in v) / (len(v) - 1)) ** 0.5
 
 
+def _umse_block(rows, ks, dec=5):
+    """uMSE over the acquisition lengths checkpoint selection ran on.
+
+    Validation draws set A uniformly from `ks` per slice, and every length is scored on the
+    same slices, so the pooled uMSE under that draw is the mean of the per-length pooled
+    values. uPSNR follows from the mean, since the logarithm does not commute with averaging.
+    """
+    out = []
+    for m in ORDER:
+        vals = [fnum(r.get("umse_pooled", "nan")) for r in rows
+                if r["method"] == m and int(float(r["n_frames"])) in ks]
+        vals = [v for v in vals if v == v]
+        if len(vals) != len(ks):
+            continue
+        u = sum(vals) / len(vals)
+        db = 10.0 * math.log10(1.0 / u) if u > 0 else float("nan")
+        out.append([PAPER_NAME.get(m, m), "%.*f" % (dec, u),
+                    "--" if db != db else "%.2f" % db])
+    return out
+
+
 def main() -> int:
     p = argparse.ArgumentParser("assemble the main comparison table")
     p.add_argument("--dir", required=True, help="medphys_eval directory (holds sweep/ and cbf/)")
@@ -95,6 +116,10 @@ def main() -> int:
                    help="repetition counts to report (default: every even k in the sweep)")
     p.add_argument("--full_k", type=int, default=12,
                    help="the acquisition's full repetition count, labelled as such")
+    p.add_argument("--umse_ks", type=int, nargs="+", default=[3, 4, 5, 6],
+                   help="acquisition lengths over which the single uMSE value is reported. "
+                        "Default 3 4 5 6 = the range validation draws set A from, so the "
+                        "reported figure is the criterion selection actually optimised.")
     p.add_argument("--umse_max_k", type=int, default=5,
                    help="uMSE is printed only up to this k; past it the estimator's noise "
                         "correction is the size of the quantity it estimates")
@@ -160,19 +185,29 @@ def main() -> int:
             body.append([str(k) if i == 0 else "", name]
                         + [cell(m, k, c, d, sd) for c, _, d, sd in COLS])
 
+    uks = sorted(set(a.umse_ks))
+    ublock = _umse_block(rows, set(uks))
+    krange = "%d to %d" % (uks[0], uks[-1]) if uks == list(range(uks[0], uks[-1] + 1)) \
+        else ", ".join(str(k) for k in uks)
+
     caption = (
         "**Table 1. Reconstruction performance.** Each block reconstructs from the stated "
         "number of acquired repetitions; repetition averaging at the full count is the "
-        "acquisition as it is performed today. uMSE is pooled over the test set and so carries "
-        "no standard deviation, and is left blank beyond %d repetitions, where too few are held "
-        "out for its noise correction to be meaningful. The remaining measures need no held-out "
-        "data and are the mean $%spm$ SD across the %d test subjects, each subject "
-        "contributing the average over its own slices."
-        % (a.umse_max_k, BS, n_sub))
+        "acquisition as it is performed today. Values are the mean $%spm$ SD across the %d "
+        "test subjects, each subject contributing the average over its own slices. Unbiased "
+        "error is reported separately below, over the %s repetitions on which checkpoint "
+        "selection was performed: it is estimated from the repetitions left out of the "
+        "reconstruction, so it is not defined at every acquisition length and is pooled over "
+        "the test set rather than averaged over subjects."
+        % (BS, n_sub, krange))
     md = [caption, "",
           "| " + " | ".join(heads) + " |",
           "|" + "|".join(["---"] * len(heads)) + "|"]
     md += ["| " + " | ".join(r) + " |" for r in body]
+
+    if ublock:
+        md += ["", "| Method | uMSE | uPSNR (dB) |", "|---|---|---|"]
+        md += ["| " + " | ".join(r) + " |" for r in ublock]
 
     # No significance-test footer. Each method is a single training run, so a test between
     # two of them describes those two networks and not the architectures being compared, and

@@ -62,21 +62,40 @@ def fnum(x):
         return float("nan")
 
 
-def load(path, k, fidelity):
-    """-> {method: {subject: {metric: value}}}, keeping NaN where a value is undefined."""
-    out = {}
+def load(path, k, fidelity, umse_ks=None):
+    """-> {method: {subject: {metric: value}}}, keeping NaN where a value is undefined.
+
+    The reference-free measures are read at `k`. The fidelity measure is read over `umse_ks`
+    and averaged per subject, because it is estimated from the repetitions left out of the
+    reconstruction and so is not comparable across acquisition lengths the way the others are;
+    `umse_ks` is the range checkpoint selection drew from. Every length is scored on the same
+    slices, so the mean over lengths is the per-subject value under that uniform draw.
+    """
+    umse_ks = set(umse_ks or [k])
+    ref, fid_acc = {}, {}
     for r in csv.DictReader(open(path, encoding="utf-8")):
-        if int(float(r["n_frames"])) != k:
-            continue
-        u = fnum(r["umse"])
-        if fidelity == "upsnr":
-            fid = -10.0 * math.log10(u) if u > 0 else float("nan")
-        else:
-            fid = u
-        out.setdefault(r["method"], {})[r["subject_id"]] = {
-            "fid": fid, "cnr": fnum(r["cnr"]),
-            "scov_gm": fnum(r["scov_gm"]), "snr_gm": fnum(r["snr_gm"]),
-        }
+        nf = int(float(r["n_frames"]))
+        m, sub = r["method"], r["subject_id"]
+        if nf in umse_ks:
+            u = fnum(r["umse"])
+            if u == u:
+                fid_acc.setdefault(m, {}).setdefault(sub, []).append(u)
+        if nf == k:
+            ref.setdefault(m, {})[sub] = {
+                "cnr": fnum(r["cnr"]), "scov_gm": fnum(r["scov_gm"]),
+                "snr_gm": fnum(r["snr_gm"]),
+            }
+
+    out = {}
+    for m, subs in ref.items():
+        for sub, vals in subs.items():
+            got = fid_acc.get(m, {}).get(sub, [])
+            u = sum(got) / len(got) if len(got) == len(umse_ks) else float("nan")
+            if fidelity == "upsnr":
+                fid = -10.0 * math.log10(u) if (u == u and u > 0) else float("nan")
+            else:
+                fid = u
+            out.setdefault(m, {})[sub] = dict(vals, fid=fid)
     return out
 
 
@@ -105,6 +124,9 @@ def main() -> int:
     p.add_argument("--dir", required=True)
     p.add_argument("--k", type=int, default=2)
     p.add_argument("--fidelity", choices=["umse", "upsnr"], default="umse")
+    p.add_argument("--umse_ks", type=int, nargs="+", default=[3, 4, 5, 6],
+                   help="acquisition lengths the fidelity panel averages over. Default 3 4 5 6 "
+                        "= the range validation draws set A from, matching Table 1.")
     p.add_argument("--out", default=None)
     p.add_argument("--dpi", type=int, default=600)
     a = p.parse_args()
@@ -112,13 +134,14 @@ def main() -> int:
     src = os.path.join(a.dir, "sweep", "comparison_long_merged.csv")
     if not os.path.isfile(src):
         raise SystemExit("no %s -- run merge_seeds.py first" % src)
-    data = load(src, a.k, a.fidelity)
+    data = load(src, a.k, a.fidelity, a.umse_ks)
     methods = [m for m in ORDER if m in data]
     fid_label = "uPSNR (dB)" if a.fidelity == "upsnr" else "uMSE"
     PANELS = panels(a.fidelity)
 
     subs = sorted(set.intersection(*(set(data[m]) for m in methods)))
-    print("subjects present in every method at k=%d: %d" % (a.k, len(subs)))
+    print("subjects present in every method at k=%d: %d (fidelity over k=%s)"
+          % (a.k, len(subs), ",".join(str(x) for x in sorted(a.umse_ks))))
 
     fig, axes = plt.subplots(1, 4, figsize=(15.0, 4.1))
 
