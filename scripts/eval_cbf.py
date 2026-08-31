@@ -177,7 +177,7 @@ def main():
                          "repetitions (the acquisition as performed today, and what Sec. 3.4 "
                          "claims) or the model's own output at that count")
     ap.add_argument("--vanilla", default=None,
-                    help="PlainUNet-N2N checkpoint; adds a comparator arm to the maps")
+                    help="UNet-N2N checkpoint; adds a comparator arm to the maps")
     ap.add_argument("--no_mean_arm", action="store_true",
                     help="skip the plain-averaging arm (it costs no inference, only I/O)")
     ap.add_argument("--max_subjects", type=int, default=20)
@@ -222,7 +222,7 @@ def main():
     if args.vanilla:
         from runners.eval_baselines import load_unet
         van = load_unet(args.vanilla, args, device)
-        print("[arm] PlainUNet-N2N loaded from %s" % args.vanilla)
+        print("[arm] UNet-N2N loaded from %s" % args.vanilla)
     if not ok:
         print("[FATAL] arch mismatch -> fix --runner_args to match the ckpt arch; aborting.")
         sys.exit(2)

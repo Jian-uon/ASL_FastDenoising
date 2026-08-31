@@ -34,7 +34,7 @@ import matplotlib.pyplot as plt
 
 PAPER_NAME = {
     "naive_mean": "Repetition\naveraging",
-    "vanilla_N2N": "PlainUNet\n-N2N",
+    "vanilla_N2N": "UNet\n-N2N",
     "SwinIR_N2N": "SwinIR\n-N2N",
     "proposed": "Proposed",
 }

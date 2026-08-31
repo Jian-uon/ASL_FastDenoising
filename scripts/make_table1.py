@@ -46,7 +46,7 @@ BS = chr(92)  # the LaTeX escape, kept out of the literals below
 
 PAPER_NAME = {
     "naive_mean":  "Repetition averaging",
-    "vanilla_N2N": "PlainUNet-N2N",
+    "vanilla_N2N": "UNet-N2N",
     "SwinIR_N2N":  "SwinIR-N2N",
     "proposed":    "Proposed",
 }

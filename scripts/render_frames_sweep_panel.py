@@ -92,7 +92,7 @@ def _center_slice(x: torch.Tensor, ctx: int) -> torch.Tensor:
 
 PAPER_NAME = {
     "naive_mean":  "Repetition\naveraging",
-    "vanilla_N2N": "PlainUNet-N2N",
+    "vanilla_N2N": "UNet-N2N",
     "SwinIR_N2N":  "SwinIR-N2N",
     "proposed":    "Proposed",
 }
