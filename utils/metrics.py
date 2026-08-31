@@ -297,7 +297,9 @@ def scov(image: Tensor, mask: Tensor, threshold: float = 0.5,
 
     For ASL: report on grey-matter PV mask thresholded at >0.5 to exclude
     partial-volume voxels. Lower = more uniform (less noise / motion).
-    Wang et al. MRM 2003 — ASL community standard.
+    Mutsaerts et al., J Cereb Blood Flow Metab 2017;37(9):3184-3192 — the ASL
+    community standard. (This docstring previously credited a Wang 2003 MRM paper;
+    that attribution was wrong and had been copied into the manuscript.)
 
     Note: scale-invariant w.r.t. linear scaling, so values computed on
     normalized PWI ≈ values on quantified CBF (modulo percentile clipping
