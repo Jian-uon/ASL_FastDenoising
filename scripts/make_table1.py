@@ -130,16 +130,25 @@ def main() -> int:
             return "--"
         if col == "umse_pooled" and k > a.umse_max_k:
             return "--"
+        if with_sd:
+            # Mean AND SD over subjects, from the same list. The summary file's *_mean is
+            # pooled over evaluation batches instead, and subjects contribute unequal
+            # numbers of slices, so taking the mean from there and the SD from here would
+            # describe two different populations in one cell.
+            vals = [fnum(x.get(col.replace("_mean", ""), "nan"))
+                    for x in per_sub.get((m, k), [])]
+            vals = [x for x in vals if x == x]
+            if not vals:
+                return "--"
+            txt = "%.*f" % (dec, sum(vals) / len(vals))
+            sd = stdev(vals)
+            if sd == sd:
+                txt += " $" + BS + "pm$ " + "%.*f" % (dec, sd)
+            return txt
         v = fnum(r.get(col, "nan"))
         if v != v:
             return "--"
-        txt = "%.*f" % (dec, v)
-        if with_sd:
-            sd = stdev(fnum(x.get(col.replace("_mean", ""), "nan"))
-                       for x in per_sub.get((m, k), []))
-            if sd == sd:
-                txt += " $" + BS + "pm$ " + "%.*f" % (dec, sd)
-        return txt
+        return "%.*f" % (dec, v)
 
     heads = ["Repetitions", "Method"] + [h for _, h, _, _ in COLS]
     body = []
@@ -157,7 +166,8 @@ def main() -> int:
         "acquisition as it is performed today. uMSE is pooled over the test set and so carries "
         "no standard deviation, and is left blank beyond %d repetitions, where too few are held "
         "out for its noise correction to be meaningful. The remaining measures need no held-out "
-        "data and are the mean $%spm$ SD across the %d test subjects."
+        "data and are the mean $%spm$ SD across the %d test subjects, each subject "
+        "contributing the average over its own slices."
         % (a.umse_max_k, BS, n_sub))
     md = [caption, "",
           "| " + " | ".join(heads) + " |",

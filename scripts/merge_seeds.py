@@ -9,6 +9,13 @@ Two aggregations, both of which the raw CSVs get wrong for a figure:
    uncertainty on the method and belongs in a band. Method names are grouped by stripping a
    trailing `_seed<n>`, so single-seed baselines pass through untouched.
 
+   `--seeds` restricts which runs are read before any of that happens. It exists because
+   averaging one arm over three seeds while its comparators are single runs is not a fair
+   row: the averaged arm has had its training variance reduced by root three and the others
+   have not. `--seeds 42` puts every arm on one run each; omitting it uses whatever is on
+   disk. Either is defensible, but the choice should be deliberate and recorded, so the
+   count that survived is printed and `n_seeds` carries it into the merged file.
+
 2. **Batches to subjects.** `comparison_long.csv` holds one row per *batch* (687 per method
    and repetition count here, against 32 held-out subjects). Slices of one subject are not
    independent, so a box drawn over batches is far tighter than the subject-level spread it
@@ -39,6 +46,26 @@ def group_of(method: str) -> str:
     return SEED_RE.sub("", method)
 
 
+def seed_of(method: str):
+    """The trailing seed number, or None for an arm that carries no seed suffix."""
+    m = SEED_RE.search(method)
+    return int(m.group(0).rsplit("seed", 1)[1]) if m else None
+
+
+def keep_seeds(rows, seeds):
+    """Drop runs whose seed is not wanted. Arms with no seed suffix always pass."""
+    if not seeds:
+        return rows
+    out = [r for r in rows if seed_of(r["method"]) in (None,) or seed_of(r["method"]) in seeds]
+    dropped = sorted({r["method"] for r in rows} - {r["method"] for r in out})
+    if dropped:
+        print("  --seeds %s: dropped %s" % (
+            ",".join(str(s) for s in sorted(seeds)), ", ".join(dropped)))
+    if not out:
+        raise SystemExit("--seeds kept nothing; check the seed numbers against the CSV")
+    return out
+
+
 def fnum(x):
     try:
         v = float(x)
@@ -65,11 +92,12 @@ def write(path, fields, rows):
     print("  wrote %s (%d rows)" % (path, len(rows)))
 
 
-def merge_long(src, dst):
+def merge_long(src, dst, seeds=None):
     rows = read(src)
     if not rows:
         raise SystemExit("empty: %s" % src)
     metrics = [c for c in rows[0] if c not in ID_LONG]
+    rows = keep_seeds(rows, seeds)
 
     # batch -> subject, still per seed
     per_sub = {}
@@ -95,11 +123,12 @@ def merge_long(src, dst):
     print("  %d batches -> %d subjects x %d methods" % (len(rows), n_sub, n_grp))
 
 
-def merge_summary(src, dst):
+def merge_summary(src, dst, seeds=None):
     rows = read(src)
     if not rows:
         raise SystemExit("empty: %s" % src)
     metrics = [c for c in rows[0] if c not in ID_SUMM]
+    rows = keep_seeds(rows, seeds)
 
     per_grp = {}
     for r in rows:
@@ -134,13 +163,17 @@ def merge_summary(src, dst):
 def main() -> int:
     p = argparse.ArgumentParser("collapse seeds and batches in a comparison sweep")
     p.add_argument("--dir", required=True, help="directory holding comparison_{long,summary}.csv")
+    p.add_argument("--seeds", type=str, default="",
+                   help="keep only these seeds, e.g. '42' or '42,1,2'. Arms with no seed "
+                        "suffix always pass. Default: use every run present.")
     a = p.parse_args()
+    seeds = {int(s) for s in a.seeds.replace(",", " ").split()} if a.seeds.strip() else None
     for name, fn in (("long", merge_long), ("summary", merge_summary)):
         src = os.path.join(a.dir, "comparison_%s.csv" % name)
         if not os.path.isfile(src):
             print("  skip: no %s" % src)
             continue
-        fn(src, os.path.join(a.dir, "comparison_%s_merged.csv" % name))
+        fn(src, os.path.join(a.dir, "comparison_%s_merged.csv" % name), seeds)
     return 0
 
 
