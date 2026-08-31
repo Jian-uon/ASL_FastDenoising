@@ -15,6 +15,10 @@
 # Knobs:
 #   SEEDS="42 1 2"      seeds for A1 and A3 (the paired claim; do not cut below 3)
 #   A0_SEEDS="42 1 2"   seeds for A0        (set to "42" if you are short on time)
+#   BASE_SEEDS="42 1 2" seeds for PlainUNet-N2N and SwinIR-N2N -- keep equal to SEEDS.
+#                       A comparator trained once contributes an unrepeated draw, so a
+#                       margin over it cannot be told apart from its own seed variance.
+#   AGG_SEEDS="42 1 2"  seeds for the uniform-aggregator ablation
 #   B1_SEEDS="42 1 2"   seeds for the T1-decoder arm; OFF by default (rejected 2026-08-31,
 #                       see CLAUDE.md "Closed questions") -- set it to re-run the arm
 #   W_ANAT="0.03"       its T1-reconstruction weight; list several to sweep at seed 42
@@ -23,7 +27,11 @@
 #   FORCE=1             queue everything regardless
 #   GO=1                submit for real (default is a dry run)
 #
-# The matrix — 12 runs at the default seeds (B1 off), 10 with A0_SEEDS="42":
+# Every arm carries the SAME seed count. Comparisons in the paper are paired per subject
+# and averaged over seeds, and the between-seed SD is itself reported, so an arm with
+# fewer seeds would enter that comparison carrying an unmeasured variance component.
+#
+# The matrix — 18 runs at the default seeds (B1 off):
 #
 #   A1  window fusion, T1 keys      x3   the method
 #   A3  window fusion, ASL keys     x3   A1 - A3 isolates the FINE-SCALE keys: both
@@ -34,10 +42,10 @@
 #                                        encoder-only, so the arm is closed. B1_SEEDS
 #                                        re-enables it if a reviewer asks for the evidence.
 #   A0  no window fusion            x3   does the module help at all
-#   AGG uniform aggregator          x1   does inverse-variance frame weighting help
+#   AGG uniform aggregator          x3   does inverse-variance frame weighting help
 #                                        (tau frozen at 0 => exactly 1/N per frame)
-#   PlainUNet-N2N                   x1   external baseline + no-T1 lower bound
-#   SwinIR-N2N                      x1   recent-architecture reference
+#   PlainUNet-N2N                   x3   external baseline + no-T1 lower bound
+#   SwinIR-N2N                      x3   recent-architecture reference
 #
 # Everything else in the paper is EVALUATION ONLY and needs no training run:
 # temporal averaging, BM3D/AONLM, the n-frames sweep, mismatched-T1 leakage, the
@@ -48,6 +56,8 @@ set -eu
 
 SEEDS=${SEEDS:-"42 1 2"}
 A0_SEEDS=${A0_SEEDS:-$SEEDS}
+BASE_SEEDS=${BASE_SEEDS:-$SEEDS}   # comparators: keep equal to SEEDS, see the header
+AGG_SEEDS=${AGG_SEEDS:-$SEEDS}
 B1_SEEDS=${B1_SEEDS:-""}      # closed arm; opt in explicitly
 W_ANAT=${W_ANAT:-"0.03"}
 MAX_STEPS=${MAX_STEPS:-500}
@@ -82,7 +92,7 @@ JOINT=env/hpc/slurm/submit_v35_joint.sh
 BASE=env/hpc/slurm/submit_baseline.sh
 
 echo "Medical Physics training matrix  (GO=$GO, MAX_STEPS=$MAX_STEPS)"
-echo "  A1/A3 seeds: $SEEDS      A0 seeds: $A0_SEEDS"
+echo "  A1/A3 seeds: $SEEDS   A0: $A0_SEEDS   baselines: $BASE_SEEDS   AGG: $AGG_SEEDS"
 echo
 
 for s in $SEEDS; do
@@ -114,15 +124,22 @@ for w in $W_ANAT; do
   sub "B1  A1 + T1 decoder w=$w  seed=42" \
       "SEED=42 MAX_STEPS=$MAX_STEPS WIN_LEVELS=2 WIN_K=t1 W_ANAT=$w yhbatch $JOINT"
 done
-sub "AGG uniform (tau frozen 0) seed=42" \
-    "SEED=42 MAX_STEPS=$MAX_STEPS WIN_LEVELS=2 WIN_K=t1 NAME_SUFFIX=_agguniform \
-EXTRA='--agg_tau_init 0 --freeze_agg_tau' yhbatch $JOINT"
-sub "PlainUNet-N2N             seed=42" \
-    "SEED=42 MAX_STEPS=$MAX_STEPS ARCH=plainunet yhbatch $BASE" \
-    "run_base_plainunet_n2n_seed42"
-sub "SwinIR-N2N                seed=42" \
-    "SEED=42 MAX_STEPS=$MAX_STEPS ARCH=swinir yhbatch $BASE" \
-    "run_base_swinir_n2n_seed42"
+for s in $AGG_SEEDS; do
+  sub "AGG uniform (tau frozen 0) seed=$s" \
+      "SEED=$s MAX_STEPS=$MAX_STEPS WIN_LEVELS=2 WIN_K=t1 NAME_SUFFIX=_agguniform \
+EXTRA='--agg_tau_init 0 --freeze_agg_tau' yhbatch $JOINT" \
+      "run_v35_joint_win2t1_agguniform_seed$s"
+done
+for s in $BASE_SEEDS; do
+  sub "PlainUNet-N2N            seed=$s" \
+      "SEED=$s MAX_STEPS=$MAX_STEPS ARCH=plainunet yhbatch $BASE" \
+      "run_base_plainunet_n2n_seed$s"
+done
+for s in $BASE_SEEDS; do
+  sub "SwinIR-N2N               seed=$s" \
+      "SEED=$s MAX_STEPS=$MAX_STEPS ARCH=swinir yhbatch $BASE" \
+      "run_base_swinir_n2n_seed$s"
+done
 
 echo
 if [ "$GO" = "1" ]; then
