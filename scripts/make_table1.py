@@ -174,18 +174,11 @@ def main() -> int:
           "|" + "|".join(["---"] * len(heads)) + "|"]
     md += ["| " + " | ".join(r) + " |" for r in body]
 
-    wp = {}
-    wsrc = os.path.join(a.dir, "sweep", "wilcoxon_ours_vs_baselines.csv")
-    if os.path.isfile(wsrc):
-        for r in csv.DictReader(open(wsrc, encoding="utf-8")):
-            if int(float(r["n_frames"])) == min(ks) and r["metric"] == "umse":
-                wp[r["baseline"]] = float(r["p_value"])
-    if wp:
-        ordered = [m for m in ORDER if m in wp and m != "proposed"]
-        md += ["", "Paired Wilcoxon on uMSE against the proposed model at %d repetitions: "
-               % min(ks)
-               + "; ".join("%s $p$ = %s" % (PAPER_NAME.get(m, m), sci(wp[m]))
-                           for m in ordered) + "."]
+    # No significance-test footer. Each method is a single training run, so a test between
+    # two of them describes those two networks and not the architectures being compared, and
+    # it leaves out training randomness, which is the larger source of uncertainty here.
+    # wilcoxon_ours_vs_baselines.csv is still written by eval_comparison_table.py if the
+    # analysis is wanted for a rebuttal.
 
     tex = [BS + "begin{tabular}{ll" + "r" * len(COLS) + "}", BS + "hline",
            " & ".join(heads) + " " + BS * 2, BS + "hline"]
