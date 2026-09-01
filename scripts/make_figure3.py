@@ -46,10 +46,14 @@ COLORS = {"naive_mean": "#b0b0b0", "vanilla_N2N": "#7fb3d5",
 # (key, axis label, higher-is-better). The fidelity panel's direction follows --fidelity:
 # uPSNR is higher-better, uMSE is lower-better.
 def panels(fidelity):
+    # White matter is reported beside gray: perfusion there is low and the signal sits closest
+    # to noise, so its uniformity is the harder test of a reconstruction and the one that
+    # exposes smoothing rather than denoising.
     return [
         ("fid",     None,          fidelity == "upsnr"),
         ("cnr",     "CNR",         True),
         ("scov_gm", "sCoV$_{GM}$", False),
+        ("scov_wm", "sCoV$_{WM}$", False),
         ("snr_gm",  "SNR$_{GM}$",  True),
     ]
 
@@ -71,7 +75,8 @@ def load(path, ks, fidelity):
     another. uPSNR is taken from the averaged uMSE, since decibels do not average.
     """
     ks = set(ks)
-    cols = (("fid", "umse"), ("cnr", "cnr"), ("scov_gm", "scov_gm"), ("snr_gm", "snr_gm"))
+    cols = (("fid", "umse"), ("cnr", "cnr"), ("scov_gm", "scov_gm"),
+            ("scov_wm", "scov_wm"), ("snr_gm", "snr_gm"))
     acc = {}
     for r in csv.DictReader(open(path, encoding="utf-8")):
         if int(float(r["n_frames"])) not in ks:
@@ -139,7 +144,7 @@ def main() -> int:
     ktxt = ",".join(str(x) for x in sorted(a.ks))
     print("subjects present in every method over k=%s: %d" % (ktxt, len(subs)))
 
-    fig, axes = plt.subplots(1, 4, figsize=(15.0, 4.1))
+    fig, axes = plt.subplots(1, len(PANELS), figsize=(3.75 * len(PANELS), 4.1))
 
     for j, (key, label, _) in enumerate(PANELS):
         ax = axes[j]
