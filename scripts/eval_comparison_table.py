@@ -71,6 +71,7 @@ from runners.eval_baselines import (
     hfen as _hfen,
 )
 from utils.metrics import (
+    PV_TISSUE,
     scov as _scov, cnr as _cnr, entropy_focus_criterion as _efc,
     upsnr_components as _upsnr_components, laplacian_variance as _lapvar,
     tissue_csf_hf_ratio as _tcsf_ratio, hf_consistency as _hf_consistency,
@@ -444,7 +445,7 @@ def main():
                 ours = run_ours_runner(ours_runner, pack, nf, args.seed, k, device,
                                        apply_input_mask=not args.ours_no_input_mask)
                 gm = _center(pack["gm"].to(device)); wm = _center(pack["wm"].to(device))
-                gmask = (gm > 0.5).float(); wmask = (wm > 0.5).float()
+                gmask = (gm > PV_TISSUE).float(); wmask = (wm > PV_TISSUE).float()
                 b_gm = _tmean(ours, gmask) - _tmean(y, gmask)   # per-tissue mean shift, residuals kept
                 b_wm = _tmean(ours, wmask) - _tmean(y, wmask)
                 return y + b_gm * gmask + b_wm * wmask

@@ -78,13 +78,22 @@ def gmsd(pred: Tensor, target: Tensor, mask: Optional[Tensor] = None,
     return float(var.sqrt().item())
 
 
+# Partial-volume threshold defining a region that is meant to be ONE tissue. At 2 mm a
+# cortical ribbon is one to two voxels wide, so pv > 0.5 mixes the tissues into both regions
+# and dilutes every contrast between them. 0.7 is the ASL convention.
+#
+# This is NOT the threshold for the union of gray and white matter, which marks brain tissue
+# and is the denominator of relative CBF: there the aim is coverage, not purity, and it stays
+# at 0.5. Anything importing this constant is asking for a single-tissue region.
+PV_TISSUE = 0.7
+
 # ---------------------------------------------------------------------------
 # GM/WM contrast ratio error
 # ---------------------------------------------------------------------------
 
 def gm_wm_contrast_error(pred: Tensor, target: Tensor,
                          gm: Tensor, wm: Tensor,
-                         pv_threshold: float = 0.5) -> float:
+                         pv_threshold: float = PV_TISSUE) -> float:
     """Absolute error of GM/WM signal ratio.
 
     Computes mean(signal in GM) / mean(signal in WM) for both pred and target,
@@ -266,7 +275,7 @@ def bright_tail_ratio(image: Tensor, mask: Optional[Tensor] = None,
 
 
 def cnr(image: Tensor, gm_mask: Tensor, wm_mask: Tensor,
-        threshold: float = 0.5, eps: float = 1e-8) -> float:
+        threshold: float = PV_TISSUE, eps: float = 1e-8) -> float:
     """Contrast-to-Noise Ratio between GM and WM.
 
         CNR = |μ_GM − μ_WM| / σ_WM
@@ -278,7 +287,7 @@ def cnr(image: Tensor, gm_mask: Tensor, wm_mask: Tensor,
     Args:
         image: [B,1,H,W] (or [B,C,H,W]) tensor
         gm_mask, wm_mask: same shape, soft PV masks in [0,1]
-        threshold: PV threshold (0.5 default; 0.7 closer to Wang 2003)
+        threshold: PV threshold; PV_TISSUE (0.7) is the ASL convention.
     """
     gm = (gm_mask > threshold).float()
     wm = (wm_mask > threshold).float()
@@ -291,11 +300,11 @@ def cnr(image: Tensor, gm_mask: Tensor, wm_mask: Tensor,
     return float(((mu_gm - mu_wm).abs() / sigma_wm).item())
 
 
-def scov(image: Tensor, mask: Tensor, threshold: float = 0.5,
+def scov(image: Tensor, mask: Tensor, threshold: float = PV_TISSUE,
          eps: float = 1e-8) -> float:
     """Spatial Coefficient of Variation = std(x)/mean(x) inside `mask`.
 
-    For ASL: report on grey-matter PV mask thresholded at >0.5 to exclude
+    For ASL: report on a grey-matter PV mask thresholded at PV_TISSUE to exclude
     partial-volume voxels. Lower = more uniform (less noise / motion).
     Mutsaerts et al., J Cereb Blood Flow Metab 2017;37(9):3184-3192 — the ASL
     community standard. (This docstring previously credited a Wang 2003 MRM paper;

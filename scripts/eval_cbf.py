@@ -33,6 +33,7 @@ from nibabel.processing import resample_from_to
 from scripts.infer_osipi import build_model, load_ema, preproc, infer_volume
 from utils.cbf import dm_to_cbf, net_alpha, qc_cbf_ranges
 from utils.cbf_metrics import icc_agreement, bland_altman
+from utils.metrics import PV_TISSUE
 
 
 def _load(path):
@@ -43,7 +44,9 @@ def _load(path):
 def regional_cbf(dm_native, m0, brain, gm, wm, params):
     """dM (native) + M0 -> CBF, return GM/WM/whole-brain mean CBF + rCBF (norm to GM+WM)."""
     cbf = dm_to_cbf(dm_native, m0, mask=brain, m0_floor=1.0, **params)["cbf"]
-    gmask, wmask = gm > 0.5, wm > 0.5
+    # single-tissue regions: purity matters, so PV_TISSUE. The GM+WM union below marks
+    # brain tissue and stays at 0.5, where coverage matters instead.
+    gmask, wmask = gm > PV_TISSUE, wm > PV_TISSUE
     ref = cbf[gmask | wmask].mean() if (gmask | wmask).any() else np.nan   # rCBF reference
     out = {}
     for name, mk in (("gm", gmask), ("wm", wmask), ("brain", brain > 0.5)):
