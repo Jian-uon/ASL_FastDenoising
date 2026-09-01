@@ -44,7 +44,7 @@ from matplotlib.colors import Normalize
 def main() -> int:
     p = argparse.ArgumentParser("assemble the rCBF figure")
     p.add_argument("--dir", required=True)
-    p.add_argument("--subject_pcts", type=float, nargs="+", default=[10, 50, 90],
+    p.add_argument("--subject_pcts", type=float, nargs="+", default=[25, 50, 90],
                    help="percentiles of voxelwise agreement at the shortest reconstruction; "
                         "one subject per value, one row each")
     p.add_argument("--slice_frac", type=float, default=0.38,
@@ -55,6 +55,10 @@ def main() -> int:
     p.add_argument("--erode", type=int, default=2,
                    help="voxels to erode off the brain mask before display; the outermost "
                         "voxels carry a partial-volume rim whose rCBF saturates the scale")
+    p.add_argument("--ref_arm_prefix", default="rcbf_mean_n",
+                   help="file prefix of the averaged reference maps, shown as the last "
+                        "column. This is the image the current protocol delivers and what "
+                        "the agreement statistics are measured against.")
     p.add_argument("--arm", default="rcbf_n",
                    help="map prefix: rcbf_n (proposed), rcbf_mean_n, rcbf_vanilla_n")
     p.add_argument("--vmax", type=float, default=2.0)
@@ -82,12 +86,19 @@ def main() -> int:
     if not ranked:
         raise SystemExit("no agreement values at %d repetitions" % k_lo)
 
+    REF_COL = "ref"          # sorts after every integer repetition count
+
     def load(sid):
         v = {}
         for k in ks:
             f = os.path.join(cbf, sid, "%s%d.nii.gz" % (a.arm, k))
             if os.path.isfile(f):
                 v[k] = np.asarray(nib.load(f).get_fdata(), dtype=np.float64)
+        # the averaged reference: the map the current protocol delivers, and what every
+        # agreement number in the lower panel is measured against
+        fr = os.path.join(cbf, sid, "%s%d.nii.gz" % (a.ref_arm_prefix, ref_k))
+        if os.path.isfile(fr):
+            v[REF_COL] = np.asarray(nib.load(fr).get_fdata(), dtype=np.float64)
         if not v:
             return None
         mf = os.path.join(a.data_root, sid, a.raw_dir, "brain_mask_asl.nii.gz")
@@ -118,7 +129,9 @@ def main() -> int:
         raise SystemExit("no subject rows could be built")
 
     vols = rows_fig[0][1]
-    kk = sorted(vols)
+    kk = sorted(k for k in vols if k != REF_COL)
+    if REF_COL in vols:
+        kk.append(REF_COL)
     nr = len(rows_fig)
     fig = plt.figure(figsize=(13.5, 2.7 + 2.4 * nr))
     top_lo = 0.36 if nr >= 3 else 0.48
@@ -142,8 +155,8 @@ def main() -> int:
             if j == 0:
                 ax.set_ylabel(lab, fontsize=9)
             if i == 0:
-                ax.set_title("%d repetitions%s"
-                             % (k, "\n(full acquisition)" if k == ref_k else ""), fontsize=10)
+                ax.set_title("Full acquisition\n(%d rep. averaged)" % ref_k
+                             if k == REF_COL else "%d repetitions" % k, fontsize=10)
     cax = fig.add_axes([0.915, top_lo + 0.03, 0.010, 0.92 - top_lo - 0.05])
     cb = fig.colorbar(ScalarMappable(norm=norm, cmap=a.cmap), cax=cax)
     cb.set_label("rCBF (fraction of the GM+WM mean)", fontsize=9)
@@ -153,7 +166,7 @@ def main() -> int:
     xs = [r["n_frames"] for r in srt]
     for key, lab, style, mk, col in (("icc_rcbf_gm", "ICC$_{GM}$", "-", "o", "#2e86c1"),
                                      ("icc_rcbf_wm", "ICC$_{WM}$", "-", "s", "#1e8449"),
-                                     ("recon_corr", "Voxelwise $r$", "--", "^", "#b9770e")):
+                                     ("recon_corr", "Voxelwise $r$ of the maps", "--", "^", "#b9770e")):
         ys = [r[key] for r in srt]
         ax.plot(xs, ys, style, color=col)
         # Filled where the value was measured. Only the model-as-reference arm has a point
