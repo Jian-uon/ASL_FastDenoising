@@ -55,6 +55,11 @@ def main() -> int:
     p.add_argument("--erode", type=int, default=2,
                    help="voxels to erode off the brain mask before display; the outermost "
                         "voxels carry a partial-volume rim whose rCBF saturates the scale")
+    p.add_argument("--exclude_subjects", nargs="*", default=[],
+                   help="subject ids to drop before ranking, for brain-mask segmentation "
+                        "failures visible at the displayed level. Mask quality depends on the "
+                        "T1 and the skull-stripping and not on any reconstruction, so this is "
+                        "not a screen on the result; the ids are printed and recorded.")
     p.add_argument("--ref_arm_prefix", default="rcbf_mean_n",
                    help="file prefix of the averaged reference maps, shown as the last "
                         "column. This is the image the current protocol delivers and what "
@@ -81,8 +86,16 @@ def main() -> int:
 
     # -- subjects by rule: percentiles of agreement at the shortest reconstruction ------
     k_lo = min(k for k in by if k != ref_k)
+    # Subjects whose brain mask failed at the displayed level are dropped before ranking.
+    # Whether BET succeeded depends on the T1 and the skull-stripping, not on any
+    # reconstruction, so screening on it is not screening on the outcome -- unlike moving the
+    # percentile until the picture improves, which is selection by appearance. The excluded
+    # identifiers are recorded so the figure is reproducible.
+    drop = set(a.exclude_subjects or [])
     ranked = sorted((r["recon_corr"], sid) for sid, r in by[k_lo].items()
-                    if sid in ref and r["recon_corr"] == r["recon_corr"])
+                    if sid in ref and r["recon_corr"] == r["recon_corr"] and sid not in drop)
+    if drop:
+        print("  excluded from row selection (brain-mask defect): %s" % ", ".join(sorted(drop)))
     if not ranked:
         raise SystemExit("no agreement values at %d repetitions" % k_lo)
 
