@@ -105,12 +105,16 @@ def _t1_structural_sim(img, t1, mask):
     return _masked_pearson(_grad_mag(img), _grad_mag(t1), mask)
 
 
-def _masked_mean(img, mask, thr=0.5):
+# Single-tissue regions, so the threshold is PV_TISSUE rather than 0.5 -- see utils/metrics.
+from utils.metrics import PV_TISSUE as _PV_TISSUE
+
+
+def _masked_mean(img, mask, thr=_PV_TISSUE):
     m = (mask > thr).float()
     return (img * m).sum() / m.sum().clamp_min(1.0)
 
 
-def _masked_std(img, mask, thr=0.5):
+def _masked_std(img, mask, thr=_PV_TISSUE):
     m = (mask > thr).float()
     n = m.sum().clamp_min(1.0)
     mu = (img * m).sum() / n
@@ -169,7 +173,7 @@ def _nframe_sweep(runner, n_list=(2, 4, 6, 8), seed=42) -> dict:
     """
     import numpy as _np
     from runners.asl_t1_guided_runner_dmvae_n2n import prepare_asl_pair_batch
-    from utils.metrics import scov as _scov, cnr as _cnr
+    from utils.metrics import scov as _scov, cnr as _cnr, PV_TISSUE
     acc = {n: {"scov": [], "cnr": [], "mean": []} for n in n_list}
     with torch.no_grad():
         for bi, vb in enumerate(runner.val_loader):
@@ -197,9 +201,9 @@ def _nframe_sweep(runner, n_list=(2, 4, 6, 8), seed=42) -> dict:
                 lens = torch.full((B,), n, device=setA.device, dtype=lenA.dtype)
                 out = runner._predict_with_ema(sub, t1, lens)["asl_recon"]
                 if gm is not None:
-                    acc[n]["scov"].append(_scov(out, gm, threshold=0.5))
+                    acc[n]["scov"].append(_scov(out, gm, threshold=PV_TISSUE))
                     if wm is not None:
-                        acc[n]["cnr"].append(_cnr(out, gm, wm, threshold=0.5))
+                        acc[n]["cnr"].append(_cnr(out, gm, wm, threshold=PV_TISSUE))
                 acc[n]["mean"].append(float((out * mb).sum() / mb.sum().clamp_min(1.0)))
     ns = [n for n in n_list if len(acc[n]["mean"]) > 0]
 
@@ -396,7 +400,7 @@ def _validate_with_per_unit_umse(runner) -> dict:
             # scov_gm + lapvar_ratio — matched to runner.validate() definitions:
             #   union  = mean of ALL frames (setA ∪ setB), the 12-NEX reference
             #   lapvR  = lapvar(recon) / lapvar(union) inside brain mask
-            #   scovGM = sCoV of recon inside GM PV mask (>0.5)
+            #   scovGM = sCoV of recon inside GM PV mask (>PV_TISSUE)
             union = direct_mean_from_frames(
                 torch.cat([pack["setA"], pack["setB"]], dim=1),
                 pack["lenA"] + pack["lenB"],
@@ -406,19 +410,19 @@ def _validate_with_per_unit_umse(runner) -> dict:
             lapvr_batch = pred_lapvar / max(ref_lapvar, 1e-8)
             scov_gm_batch = float("nan")
             if pack.get("gm") is not None:
-                scov_gm_batch = scov(out, pack["gm"], threshold=0.5)
+                scov_gm_batch = scov(out, pack["gm"], threshold=_PV_TISSUE)
                 scov_gm_sum += scov_gm_batch
                 scov_gm_cnt += 1
             scov_wm_batch = float("nan")
             if pack.get("wm") is not None:
-                scov_wm_batch = scov(out, pack["wm"], threshold=0.5)
+                scov_wm_batch = scov(out, pack["wm"], threshold=_PV_TISSUE)
                 scov_wm_sum += scov_wm_batch
                 scov_wm_cnt += 1
             cnr_batch = float("nan")
             if pack.get("gm") is not None and pack.get("wm") is not None:
-                cnr_batch = cnr(out, pack["gm"], pack["wm"], threshold=0.5)
+                cnr_batch = cnr(out, pack["gm"], pack["wm"], threshold=_PV_TISSUE)
                 cnr_sum += cnr_batch
-                cnr_ref_sum += cnr(union, pack["gm"], pack["wm"], threshold=0.5)
+                cnr_ref_sum += cnr(union, pack["gm"], pack["wm"], threshold=_PV_TISSUE)
                 cnr_cnt += 1
             # Cross-modal T1-leak guardrail: gradient-correlation(recon, T1) vs the
             # union's own gradient-correlation(union, T1). pred >> ref ⇒ T1 leak.

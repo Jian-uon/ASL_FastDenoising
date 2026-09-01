@@ -82,12 +82,15 @@ from utils.metrics import (
 )
 
 
-def _masked_mean(img, mask, thr=0.5):
+# thr defaults to PV_TISSUE, not 0.5: both callers want a region that is one tissue. The
+# numerator is a tissue mean, which a half-and-half voxel dilutes, and the denominator is CSF
+# standing in for the noise floor, where leaked tissue would count real perfusion as noise.
+def _masked_mean(img, mask, thr=PV_TISSUE):
     m = (mask > thr).float()
     return (img * m).sum() / m.sum().clamp_min(1.0)
 
 
-def _masked_std(img, mask, thr=0.5):
+def _masked_std(img, mask, thr=PV_TISSUE):
     m = (mask > thr).float()
     n = m.sum().clamp_min(1.0)
     mu = (img * m).sum() / n
