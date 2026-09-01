@@ -493,7 +493,7 @@ def main():
             # Batch-level context (same for every method): the 12-NEX reference's own CNR,
             # and shared reference-percentile intensity bounds so image_entropy is comparable
             # across methods (a fixed [0,1] would clip; per-method bounds would not compare).
-            cnr_ref = (_cnr(union, gm, wm, threshold=0.5)
+            cnr_ref = (_cnr(union, gm, wm, threshold=PV_TISSUE)
                        if (gm is not None and wm is not None) else float("nan"))
             # The 12-repetition average is what the full-length acquisition delivers today, so
             # it belongs in the table as a row. Its SNR is measured the same way as every
@@ -534,9 +534,9 @@ def main():
                 ef = eff_frames.setdefault((name, nf), [0.0, 0.0])
                 ef[0] += float(eff_len.float().mean().item()); ef[1] += 1.0
                 umse_batch = ((ssq - svc) / n_pix) if (umse_ok and n_pix > 0) else float("nan")
-                cnr_v = _cnr(pred, gm, wm, threshold=0.5) if (gm is not None and wm is not None) else float("nan")
-                scov_gm = _scov(pred, gm, threshold=0.5) if gm is not None else float("nan")
-                scov_wm = _scov(pred, wm, threshold=0.5) if wm is not None else float("nan")
+                cnr_v = _cnr(pred, gm, wm, threshold=PV_TISSUE) if (gm is not None and wm is not None) else float("nan")
+                scov_gm = _scov(pred, gm, threshold=PV_TISSUE) if gm is not None else float("nan")
+                scov_wm = _scov(pred, wm, threshold=PV_TISSUE) if wm is not None else float("nan")
                 efc_v = _efc(pred, brain)
                 # tissue SNR = mean_tissue(pred) / std_CSF(pred); CSF ΔM≈0 -> σ_CSF is the
                 # noise floor (same definition as eval_select_ckpt's pooled_snr_gm/wm).
