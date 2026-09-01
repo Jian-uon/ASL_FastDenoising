@@ -13,7 +13,7 @@ numbers, and the plots repeated that without adding anything.
 
 Nothing here is chosen by appearance, and every choice is printed when the script runs:
 
-* subjects -- the ones sitting at the requested percentiles of voxelwise agreement with the
+* subjects -- the ones sitting at the requested percentiles of map correlation with the
               full acquisition at the shortest reconstruction, so the rows span the cohort
               instead of showing three variations on a favourable case
 * slice    -- the same fraction through each subject's brain-bearing range, so the three rows
@@ -45,7 +45,7 @@ def main() -> int:
     p = argparse.ArgumentParser("assemble the rCBF figure")
     p.add_argument("--dir", required=True)
     p.add_argument("--subject_pcts", type=float, nargs="+", default=[25, 50, 90],
-                   help="percentiles of voxelwise agreement at the shortest reconstruction; "
+                   help="percentiles of map correlation at the shortest reconstruction; "
                         "one subject per value, one row each")
     p.add_argument("--slice_frac", type=float, default=0.38,
                    help="where the displayed slice sits in each subject's brain-bearing range")
@@ -123,7 +123,7 @@ def main() -> int:
         z = int(round(zs[0] + a.slice_frac * (zs[-1] - zs[0]))) if zs else any3.shape[2] // 2
         rows_fig.append(("%dth percentile\nagreement" % pc, vv, z))
         # printed, not drawn: the identifier is a patient name
-        print("  %3dth pct -> %s  (voxelwise r = %.3f at %d rep., slice z=%d)"
+        print("  %3dth pct -> %s  (map correlation = %.3f at %d rep., slice z=%d)"
               % (pc, sid, corr, k_lo, z))
     if not rows_fig:
         raise SystemExit("no subject rows could be built")
@@ -166,7 +166,7 @@ def main() -> int:
     xs = [r["n_frames"] for r in srt]
     for key, lab, style, mk, col in (("icc_rcbf_gm", "ICC$_{GM}$", "-", "o", "#2e86c1"),
                                      ("icc_rcbf_wm", "ICC$_{WM}$", "-", "s", "#1e8449"),
-                                     ("recon_corr", "Voxelwise $r$ of the maps", "--", "^", "#b9770e")):
+                                     ("recon_corr", "Map correlation", "--", "^", "#b9770e")):
         ys = [r[key] for r in srt]
         ax.plot(xs, ys, style, color=col)
         # Filled where the value was measured. Only the model-as-reference arm has a point

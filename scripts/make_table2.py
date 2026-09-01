@@ -79,7 +79,7 @@ def main() -> int:
     n_sub_rows = len(by.get(ref_k, {}))
 
     heads = ["Repetitions", "Scan time", "rCBF$_{GM}$", "rCBF$_{WM}$",
-             "ICC$_{GM}$", "ICC$_{WM}$", "Bias (95 % LoA), GM", "Voxelwise $r$"]
+             "ICC$_{GM}$", "ICC$_{WM}$", "Bias (95 % LoA), GM", "Map correlation"]
     body, n_sub = [], 0
     for s in d["summary"]:
         k = s["n_frames"]
@@ -103,7 +103,8 @@ def main() -> int:
         "**Table 2. Relative CBF agreement.** Agreement of relative CBF, normalized to the "
         "gray- plus white-matter mean, against the %d-repetition acquisition, which is the "
         "reference. ICC is ICC(2,1), "
-        "absolute agreement; limits of agreement are the bias $%spm$ 1.96 SD; voxelwise $r$ "
+        "absolute agreement; limits of agreement are the bias $%spm$ 1.96 SD; the map "
+        "correlation "
         "is measured within the brain mask. Scan time is a percentage of the full "
         "acquisition, %s the discarded first repetition. n = %d held-out subjects."
         % (ref_k, BS, warm, n_sub))
