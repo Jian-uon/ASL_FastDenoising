@@ -63,20 +63,50 @@ C2=$(ck  run_v35_joint_win2t1_seed2)
 CPU=$(ck run_base_plainunet_n2n_seed42)
 CSW=$(ck run_base_swinir_n2n_seed42)
 
-ra() {  # ra <seed> -> the runner_args that rebuild the trained architecture
+ra() {  # ra <seed> [<levels>] [<key source>] [<extra flags>]
+  # Must reproduce what the run was TRAINED with: the checkpoint is loaded into the
+  # architecture these flags build, and a mismatch fails to load rather than silently
+  # scoring the wrong model.
+  _s=$1; _lv=${2:-2}; _ks=${3:-t1}; _ex=${4:-}
   echo "--config $CONFIG --exp $EXP --name v35_eval_tmp --base_ch 32 --depth 4 \
 --use_t1_cross_fusion --t1_attn_max_tokens 1024 --t1_task recon --premask_asl_inputs \
---window_fusion_levels 2 --window_k_source t1 --best_criterion umse --seed $1"
+--window_fusion_levels $_lv --window_k_source $_ks --best_criterion umse --seed $_s $_ex"
 }
+
+# Ablation arms, added when their post-hoc checkpoint exists. They finish at different
+# times, and a sweep covering the arms that are ready beats one that refuses to start.
+ARMS=""
+add_arm() {   # add_arm <label> <run name> <runner args>
+  _p="$EXP/logs/$2/checkpoints/best_umse_posthoc.pth"
+  if [ -f "$_p" ]; then
+    ARMS="$ARMS --extra_runner '$1::$_p::$3'"
+    echo "[eval] + $1"
+  else
+    echo "[eval] - $1  (no best_umse_posthoc.pth yet, skipped)"
+  fi
+}
+
+for s in 42 1 2; do
+  add_arm "A3_aslkeys_seed$s" "run_v35_joint_win2asl_seed$s" "$(ra $s 2 asl)"
+done
+for s in 42 1 2; do
+  add_arm "A0_nowindow_seed$s" "run_v35_joint_seed$s" "$(ra $s 0 t1)"
+done
+for s in 42 1 2; do
+  add_arm "AGG_uniform_seed$s" "run_v35_joint_win2t1_agguniform_seed$s" \
+          "$(ra $s 2 t1 '--agg_tau_init 0 --freeze_agg_tau')"
+done
 
 if [ "$PHASE" = all ] || [ "$PHASE" = sweep ]; then
   echo "=== [eval] sweep: split=$SPLIT k in {$KS}"
-  yhrun python scripts/eval_comparison_table.py \
+  # eval, not sh, because the accumulated arm specs carry spaces inside each argument
+  eval yhrun python scripts/eval_comparison_table.py \
     --config "$CONFIG" --split "$SPLIT" --seed 42 --slice_context 0 \
     --n_frames $KS --out_dir "$OUT/sweep" \
-    --ours "$C42" --ours_runner_args "$(ra 42)" --ours_label "proposed_seed42" \
-    --extra_runner "proposed_seed1::$C1::$(ra 1)" \
-    --extra_runner "proposed_seed2::$C2::$(ra 2)" \
+    --ours "$C42" --ours_runner_args "'$(ra 42)'" --ours_label proposed_seed42 \
+    --extra_runner "'proposed_seed1::$C1::$(ra 1)'" \
+    --extra_runner "'proposed_seed2::$C2::$(ra 2)'" \
+    $ARMS \
     --vanilla "$CPU" --swinir_n2n "$CSW" --include_naive \
     || die "eval_comparison_table.py (sweep)"
 fi
