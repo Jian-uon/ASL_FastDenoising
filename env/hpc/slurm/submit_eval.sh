@@ -42,7 +42,11 @@ source env/hpc/env.sh
 PHASE=${PHASE:-all}
 OUT=${OUT:-$EXP/medphys_eval}
 SPLIT=${SPLIT:-test}
-KS=${KS:-"2 3 4 5 6 7 8 9"}     # uMSE needs 3 held-out frames => k <= 9
+KS=${KS:-"2 3 4 5 6 7 8 9 10 12"}   # uMSE needs 3 held-out frames, so it is NaN past 9 and the
+                              # sweep figure's fidelity panel ends there. The reference-free
+                              # metrics need no hold-out and stay valid to 12, which is the
+                              # point the paper compares against: repetition averaging at the
+                              # full acquisition. Capping the grid at 9 would remove it.
 K_MONTAGE=${K_MONTAGE:-"2 4 6 8 12"}   # the montage renders these k as columns, so the operating
                                     # point can be chosen afterwards without re-running this job
 N_SUBJ=${N_SUBJ:-20}          # montage slices, spread evenly over the held-out split

@@ -33,7 +33,12 @@ PAPER_NAME = {
 ORDER = ["naive_mean", "vanilla_N2N", "SwinIR_N2N", "proposed"]
 
 # (per-subject column, header, decimals)
-REF_COLS = [("cnr", "CNR", 3), ("scov_gm", "sCoV$_{GM}$", 3), ("snr_gm", "SNR$_{GM}$", 2)]
+# White matter is here rather than in a figure. The coefficient of variation is defined on gray
+# matter by the work it cites, and in white matter its denominator sits near the noise floor,
+# so the ratio tracks smoothing; it is still the measure on which the ranking reverses, so it
+# is reported where Section 3.2 can point at it.
+REF_COLS = [("cnr", "CNR", 3), ("scov_gm", "sCoV$_{GM}$", 3), ("scov_wm", "sCoV$_{WM}$", 3),
+            ("snr_gm", "SNR$_{GM}$", 2)]
 
 
 def fnum(x):

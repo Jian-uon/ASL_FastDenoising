@@ -46,14 +46,13 @@ COLORS = {"naive_mean": "#b0b0b0", "vanilla_N2N": "#7fb3d5",
 # (key, axis label, higher-is-better). The fidelity panel's direction follows --fidelity:
 # uPSNR is higher-better, uMSE is lower-better.
 def panels(fidelity):
-    # White matter is reported beside gray: perfusion there is low and the signal sits closest
-    # to noise, so its uniformity is the harder test of a reconstruction and the one that
-    # exposes smoothing rather than denoising.
+    # Gray matter only. The coefficient of variation is defined there by the work it cites,
+    # and in white matter the mean in its denominator is close to the noise floor, so the
+    # ratio reports smoothing more than uniformity. Table 1 carries the white-matter value.
     return [
         ("fid",     None,          fidelity == "upsnr"),
         ("cnr",     "CNR",         True),
         ("scov_gm", "sCoV$_{GM}$", False),
-        ("scov_wm", "sCoV$_{WM}$", False),
         ("snr_gm",  "SNR$_{GM}$",  True),
     ]
 
@@ -75,8 +74,7 @@ def load(path, ks, fidelity):
     another. uPSNR is taken from the averaged uMSE, since decibels do not average.
     """
     ks = set(ks)
-    cols = (("fid", "umse"), ("cnr", "cnr"), ("scov_gm", "scov_gm"),
-            ("scov_wm", "scov_wm"), ("snr_gm", "snr_gm"))
+    cols = (("fid", "umse"), ("cnr", "cnr"), ("scov_gm", "scov_gm"), ("snr_gm", "snr_gm"))
     acc = {}
     for r in csv.DictReader(open(path, encoding="utf-8")):
         if int(float(r["n_frames"])) not in ks:
