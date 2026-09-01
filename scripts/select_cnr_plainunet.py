@@ -85,7 +85,9 @@ def main():
             n += 1
         pooled_cnr = cnr_sum / max(n, 1)
         pooled_scov_gm = scov_sum / max(n, 1)
-        pooled_umse = (max((ssq - svc) / npix, 1e-12) if npix > 0 else float("nan"))
+        # Not clamped: an unbiased risk may be negative, and clamping collapses every such
+        # checkpoint onto one value for the argmin below to choose between arbitrarily.
+        pooled_umse = ((ssq - svc) / npix if npix > 0 else float("nan"))
         results.append(dict(ckpt=os.path.basename(ck), ckpt_path=ck,
                             pooled_cnr=pooled_cnr, pooled_scov_gm=pooled_scov_gm, pooled_umse=pooled_umse))
         print(f"[sel-unet] {os.path.basename(ck):16s} CNR={pooled_cnr:.4f} uMSE={pooled_umse:.5f} sCoVgm={pooled_scov_gm:.4f}")
