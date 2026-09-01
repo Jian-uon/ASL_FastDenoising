@@ -156,9 +156,13 @@ def main() -> int:
                                      ("recon_corr", "Voxelwise $r$", "--", "^", "#b9770e")):
         ys = [r[key] for r in srt]
         ax.plot(xs, ys, style, color=col)
-        # filled where the value was measured; hollow at the reference, where the three
-        # statistics are 1 by construction rather than by result
-        ax.plot([x for x in xs if x != ref_k], [y for x, y in zip(xs, ys) if x != ref_k],
+        # Filled where the value was measured. Only the model-as-reference arm has a point
+        # that is 1 by construction rather than by result, and only that one is drawn hollow
+        # below; against the averaged reference every length is a measurement, including the
+        # last, which is the one that separates the reconstruction cost from the scan-length
+        # cost and so must not be left off.
+        skip = {ref_k} if ref_arm == "model" else set()
+        ax.plot([x for x in xs if x not in skip], [y for x, y in zip(xs, ys) if x not in skip],
                 mk, color=col, label=lab, linestyle="none")
         if ref_arm == "model":
             ax.plot([ref_k], [dict(zip(xs, ys))[ref_k]], mk, color=col, mfc="white",
