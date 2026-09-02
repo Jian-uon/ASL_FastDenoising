@@ -40,6 +40,7 @@ import torch
 import matplotlib
 matplotlib.use("Agg", force=True)
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 
 import eval_comparison_table as ect          # loaders + infer (build_runner_from, run_ours_runner, ...)
 
@@ -134,9 +135,9 @@ def _save_frames_grid(t1, union, grid, nframes, path, title="", dpi=600,
         # is a diagnostic, and the figure the paper carries does not use it.
         nrow = len(methods)
         ncol = len(nframes) + 1 + (1 if show_error else 0)
-        fig = plt.figure(figsize=(2.35 * ncol + 0.7, 2.35 * nrow + 0.45))
+        fig = plt.figure(figsize=(2.35 * ncol + 0.7, 2.35 * nrow + 0.95))
         gs = fig.add_gridspec(nrow, ncol + 1, width_ratios=[1.0, SPACER] + [1.0] * (ncol - 1),
-                              left=0.055, right=0.995, top=0.90, bottom=0.01,
+                              left=0.055, right=0.995, top=0.855, bottom=0.01,
                               wspace=0.045, hspace=0.045)
 
         def cell(r, c):                       # c counts real columns, skipping the spacer
@@ -150,23 +151,41 @@ def _save_frames_grid(t1, union, grid, nframes, path, title="", dpi=600,
         # at that same count in every configuration used here, so it names the column;
         # a montage that stopped short of the full acquisition would mislabel it.
         ref_n = max(nframes)
+        # rot90 to match the orientation Figure 5 draws; two figures of the same brain must
+        # not disagree about which way is up.
+        rot = np.rot90
+        top = {}
         for r, name in enumerate(methods):
             a = cell(r, 0)
-            a.imshow(u, cmap="gray", vmin=vmin, vmax=vmax)
+            a.imshow(rot(u), cmap="gray", vmin=vmin, vmax=vmax)
             a.set_ylabel(PAPER_NAME.get(name, name), fontsize=12)
             if r == 0:
-                a.set_title("Full acquisition\n(%d rep. averaged)" % ref_n, fontsize=12)
+                a.set_title("%d repetitions\naveraged" % ref_n, fontsize=12)
+                top[0] = a
             for c, nf in enumerate(nframes, start=1):
                 a = cell(r, c)
-                a.imshow(grid[name][nf][0, 0].cpu().numpy() * brain,
+                a.imshow(rot(grid[name][nf][0, 0].cpu().numpy() * brain),
                          cmap="gray", vmin=vmin, vmax=vmax)
                 if r == 0:
                     a.set_title("%d repetitions" % nf, fontsize=12)
+                    top[c] = a
             if show_error:
                 a = cell(r, ncol - 1)
-                a.imshow(res[name], cmap="inferno", vmin=0.0, vmax=rmax)
+                a.imshow(rot(res[name]), cmap="inferno", vmin=0.0, vmax=rmax)
                 if r == 0:
                     a.set_title("|error| at %d rep." % k_res, fontsize=12)
+                    top[ncol - 1] = a
+
+        # Which column is the acquired image and which are reconstructions, on the figure
+        # rather than only in the caption.
+        y = max(t.get_position().y1 for t in top.values()) + 0.075
+        last = len(nframes)
+        for c0, c1, lab in ((0, 0, "Acquired"), (1, last, "Reconstructed")):
+            x0 = top[c0].get_position().x0
+            x1 = top[c1].get_position().x1
+            fig.add_artist(Line2D([x0, x1], [y, y], color="#333333", lw=1.4))
+            fig.text((x0 + x1) / 2, y + 0.008, lab, ha="center", va="bottom",
+                     fontsize=14, fontweight="bold")
         # The subject identifier is a patient name; it stays in the file name, off the figure.
         fig.savefig(path, dpi=dpi, bbox_inches="tight", facecolor="white")
         plt.close(fig)
