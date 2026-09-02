@@ -92,6 +92,26 @@ def write(path, fields, rows):
     print("  wrote %s (%d rows)" % (path, len(rows)))
 
 
+def warn_sparse(rows, cols=("umse", "cnr", "snr_gm", "scov_gm"), tol=0.5):
+    """Shout if a metric is mostly NaN, instead of letting it average away to a plausible number.
+
+    A sweep written with the 2-voxel CSF erosion returned snr_gm on 3.8% of batches, and the
+    few that survived took sigma_CSF from a handful of voxels, which underestimates it and put
+    SNR near 8.5 where it belongs near 2.9. Averaging that silently produces a table nobody can
+    tell is wrong by looking at it.
+    """
+    if not rows:
+        return rows
+    for c in cols:
+        if c not in rows[0]:
+            continue
+        n = sum(1 for r in rows if fnum(r[c]) != fnum(r[c]))
+        if n > tol * len(rows):
+            print("  !! %s is NaN in %d of %d rows (%.0f%%) -- the sweep that wrote this is "
+                  "not usable for that column" % (c, n, len(rows), 100.0 * n / len(rows)))
+    return rows
+
+
 def ensure_cnr_csf(rows):
     """Back-fill cnr_csf on a CSV written before the evaluation emitted it.
 
@@ -109,7 +129,7 @@ def ensure_cnr_csf(rows):
 
 
 def merge_long(src, dst, seeds=None):
-    rows = ensure_cnr_csf(read(src))
+    rows = ensure_cnr_csf(warn_sparse(read(src)))
     if not rows:
         raise SystemExit("empty: %s" % src)
     metrics = [c for c in rows[0] if c not in ID_LONG]
@@ -140,7 +160,7 @@ def merge_long(src, dst, seeds=None):
 
 
 def merge_summary(src, dst, seeds=None):
-    rows = ensure_cnr_csf(read(src))
+    rows = ensure_cnr_csf(warn_sparse(read(src)))
     if not rows:
         raise SystemExit("empty: %s" % src)
     metrics = [c for c in rows[0] if c not in ID_SUMM]
