@@ -48,6 +48,7 @@ from __future__ import annotations
 import argparse
 import csv
 import os
+import re
 import sys
 from typing import Callable, Dict, List
 
@@ -100,6 +101,12 @@ def _csf_noise(img, csf, erode_iters=0, min_vox=64):
 # thr defaults to PV_TISSUE, not 0.5: both callers want a region that is one tissue. The
 # numerator is a tissue mean, which a half-and-half voxel dilutes, and the denominator is CSF
 # standing in for the noise floor, where leaked tissue would count real perfusion as noise.
+def _seed_suffix(path):
+    """'_seedN' from a checkpoint path, or '' when the run name carries no seed."""
+    m = re.search(r"_seed(\d+)", str(path).replace(chr(92), "/"))
+    return "_seed%s" % m.group(1) if m else ""
+
+
 def _masked_mean(img, mask, thr=PV_TISSUE):
     m = (mask > thr).float()
     return (img * m).sum() / m.sum().clamp_min(1.0)
@@ -151,13 +158,17 @@ def parse_args():
                         "Wilcoxon stay valid. Used for the attribution baselines "
                         "(ASL-only-MoSSM via --zero_t1, naive-T1-concat via --naive_t1_concat).")
     # PlainUNet baselines (shared arch)
-    p.add_argument("--vanilla", type=str, default=None, help="PlainUNet2D (mode=n2n)")
+    # Repeatable, so a baseline can enter with as many training seeds as the proposed model
+    # does. Each checkpoint becomes its own method, labelled with the seed parsed from its
+    # path, and merge_seeds groups them back together -- otherwise a three-seed mean would be
+    # compared against a single run of each baseline.
+    p.add_argument("--vanilla", action="append", default=[], help="PlainUNet2D (mode=n2n)")
     p.add_argument("--sup", type=str, default=None, help="PlainUNet2D (mode=sup) — full-NEX upper bound")
     p.add_argument("--n2self", type=str, default=None, help="PlainUNet2D (mode=n2self)")
     # SwinIR baseline (recent-architecture reference; arch auto-detected from ckpt)
     p.add_argument("--swinir_sup", type=str, default=None,
                    help="SwinIR2D (mode=sup) — recent-architecture supervised reference (Shou et al., 2024)")
-    p.add_argument("--swinir_n2n", type=str, default=None,
+    p.add_argument("--swinir_n2n", action="append", default=[],
                    help="SwinIR2D (mode=n2n) — optional same-regime (self-supervised) SwinIR")
     p.add_argument("--concat", type=str, default=None,
                    help="PlainUNet2D t1_concat — unguarded T1-concat baseline (A1, PlainUNet variant)")
@@ -405,9 +416,10 @@ def main():
         methods["naive_mean"] = lambda pack, nf, k: run_naive(_presubset_pack(pack, nf, args.seed, k, device), 0, device)
     if args.include_nlm:
         methods["NLM"] = lambda pack, nf, k: run_nlm_local(pack, nf, args.seed, k, device, args)
-    if args.vanilla:
-        m_van = load_unet(args.vanilla, args, device)
-        methods["vanilla_N2N"] = lambda pack, nf, k, m=m_van: run_unet(m, _presubset_pack(pack, nf, args.seed, k, device), 0, device)
+    for _ck in (args.vanilla or []):
+        _m = load_unet(_ck, args, device)
+        methods["vanilla_N2N%s" % _seed_suffix(_ck)] = (
+            lambda pack, nf, k, m=_m: run_unet(m, _presubset_pack(pack, nf, args.seed, k, device), 0, device))
     if args.n2self:
         m_ns = load_unet(args.n2self, args, device)
         methods["Noise2Self"] = lambda pack, nf, k, m=m_ns: run_unet(m, _presubset_pack(pack, nf, args.seed, k, device), 0, device)
@@ -417,9 +429,10 @@ def main():
     if getattr(args, "swinir_sup", None):
         m_swin = load_unet(args.swinir_sup, args, device)
         methods["SwinIR_sup(12NEX)"] = lambda pack, nf, k, m=m_swin: run_unet(m, _presubset_pack(pack, nf, args.seed, k, device), 0, device)
-    if getattr(args, "swinir_n2n", None):
-        m_swin_n = load_unet(args.swinir_n2n, args, device)
-        methods["SwinIR_N2N"] = lambda pack, nf, k, m=m_swin_n: run_unet(m, _presubset_pack(pack, nf, args.seed, k, device), 0, device)
+    for _ck in (getattr(args, "swinir_n2n", None) or []):
+        _m = load_unet(_ck, args, device)
+        methods["SwinIR_N2N%s" % _seed_suffix(_ck)] = (
+            lambda pack, nf, k, m=_m: run_unet(m, _presubset_pack(pack, nf, args.seed, k, device), 0, device))
     if getattr(args, "concat", None):
         m_cat = load_unet(args.concat, args, device)
         methods["PlainUNet_concat"] = lambda pack, nf, k, m=m_cat: run_unet(m, _presubset_pack(pack, nf, args.seed, k, device), 0, device)

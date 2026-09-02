@@ -37,7 +37,7 @@ CONFIG=${CONFIG:-env/hpc/configs/server_v35_joint.yml}
 source env/hpc/env.sh
 
 MAIN_RUNS=${MAIN_RUNS:-"$(cd "$EXP/logs" 2>/dev/null && ls -d run_v35_joint_* 2>/dev/null | tr '\n' ' ')"}
-BASE_RUNS=${BASE_RUNS:-"run_base_plainunet_n2n_seed42 run_base_swinir_n2n_seed42"}
+BASE_RUNS=${BASE_RUNS:-"$(cd "$EXP/logs" 2>/dev/null && ls -d run_base_*_n2n_seed* 2>/dev/null | tr '\n' ' ')"}
 
 die() { echo "[select] FAILED at: $*" >&2; exit 1; }
 

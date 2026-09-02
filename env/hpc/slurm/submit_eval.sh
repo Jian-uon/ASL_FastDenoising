@@ -64,8 +64,20 @@ ck()  { p="$EXP/logs/$1/checkpoints/best_umse_posthoc.pth"
 C42=$(ck run_v35_joint_win2t1_seed42)
 C1=$(ck  run_v35_joint_win2t1_seed1)
 C2=$(ck  run_v35_joint_win2t1_seed2)
-CPU=$(ck run_base_plainunet_n2n_seed42)
+CPU=$(ck run_base_plainunet_n2n_seed42)   # seed 42 alone, for the montage
 CSW=$(ck run_base_swinir_n2n_seed42)
+
+# The sweep takes every baseline seed that has a post-hoc checkpoint, so a baseline is
+# averaged over as many runs as the proposed model instead of one. eval_comparison_table
+# labels each by the seed in its path and merge_seeds groups them back.
+VAN=""; SWI=""
+for s in 42 1 2; do
+  _p="$EXP/logs/run_base_plainunet_n2n_seed$s/checkpoints/best_umse_posthoc.pth"
+  [ -f "$_p" ] && VAN="$VAN --vanilla $_p"
+  _p="$EXP/logs/run_base_swinir_n2n_seed$s/checkpoints/best_umse_posthoc.pth"
+  [ -f "$_p" ] && SWI="$SWI --swinir_n2n $_p"
+done
+echo "[eval] baselines: $(echo $VAN | grep -c -o -- --vanilla) PlainUNet, $(echo $SWI | grep -c -o -- --swinir_n2n) SwinIR seeds"
 
 ra() {  # ra <seed> [<levels>] [<key source>] [<extra flags>]
   # Must reproduce what the run was TRAINED with: the checkpoint is loaded into the
@@ -111,7 +123,7 @@ if [ "$PHASE" = all ] || [ "$PHASE" = sweep ]; then
     --extra_runner "'proposed_seed1::$C1::$(ra 1)'" \
     --extra_runner "'proposed_seed2::$C2::$(ra 2)'" \
     $ARMS \
-    --vanilla "$CPU" --swinir_n2n "$CSW" --include_naive \
+    $VAN $SWI --include_naive \
     || die "eval_comparison_table.py (sweep)"
 fi
 
