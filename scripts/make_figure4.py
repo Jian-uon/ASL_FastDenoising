@@ -75,7 +75,9 @@ def main() -> int:
     cbf = os.path.join(a.dir, "cbf")
     d = json.load(open(os.path.join(cbf, "cbf_eval.json"), encoding="utf-8"))
     ref_k = d["ref_frames"]
-    ref_arm = d.get("params", {}).get("ref_arm", "model")
+    # eval_cbf defaults to the averaged acquisition; a file written before ref_arm was
+    # recorded came from that default too.
+    ref_arm = d.get("params", {}).get("ref_arm", "mean")
     ks = [s["n_frames"] for s in d["summary"]]
 
     by = {}
@@ -148,7 +150,7 @@ def main() -> int:
     nr = len(rows_fig)
     fig = plt.figure(figsize=(13.5, 2.7 + 2.4 * nr))
     top_lo = 0.36 if nr >= 3 else 0.48
-    gs_top = fig.add_gridspec(nr, len(kk), left=0.07, right=0.90,
+    gs_top = fig.add_gridspec(nr, len(kk), left=0.03, right=0.90,
                               top=0.95, bottom=top_lo, wspace=0.05, hspace=0.08)
     gs_bot = fig.add_gridspec(1, 1, left=0.31, right=0.73,
                               top=top_lo - 0.07, bottom=0.06)
@@ -165,8 +167,6 @@ def main() -> int:
                           interpolation="nearest")
             ax.set_xticks([])
             ax.set_yticks([])
-            if j == 0:
-                ax.set_ylabel(lab, fontsize=9)
             if i == 0:
                 ax.set_title("Full acquisition\n(%d rep. averaged)" % ref_k
                              if k == REF_COL else "%d repetitions" % k, fontsize=10)

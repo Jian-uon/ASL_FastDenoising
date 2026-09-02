@@ -218,7 +218,8 @@ def main():
     args = ap.parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
 
-    params = dict(pld=args.pld, ld=args.ld, t1_blood=args.t1_blood, lam=0.9,
+    params = dict(ref_arm=args.ref_arm,
+                  pld=args.pld, ld=args.ld, t1_blood=args.t1_blood, lam=0.9,
                   alpha=net_alpha(args.alpha_label, 0.93, args.n_bs))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"[device] {device}  params={params}")
@@ -359,7 +360,12 @@ def main():
         row["gm_wm_ratio"] = row["cbf_gm"] / row["cbf_wm"] if row["cbf_wm"] else float("nan")
         row["recon_corr"] = float(np.nanmean([cur[s]["recon_corr"] for s in cur]))
         row["recon_nrmse"] = float(np.nanmean([cur[s]["recon_nrmse"] for s in cur]))
-        if n == ref_n:
+        # Identity holds only when the reference IS this arm at this length. Against the
+        # averaged acquisition (--ref_arm mean, the default) the model at ref_n is still a
+        # reconstruction and its disagreement there is a measurement -- the one that separates
+        # what reconstruction costs from what shortening the scan costs. Short-circuiting it
+        # to 1.0 erased exactly that number.
+        if n == ref_n and args.ref_arm == "model":
             row["icc_rcbf_gm"] = row["icc_rcbf_wm"] = 1.0; row["ba_bias_rcbf_gm"] = 0.0
             for _t in ("gm", "wm"):
                 row[f"ba_sd_rcbf_{_t}"] = 0.0
