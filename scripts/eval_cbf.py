@@ -44,10 +44,13 @@ def _load(path):
 def regional_cbf(dm_native, m0, brain, gm, wm, params):
     """dM (native) + M0 -> CBF, return GM/WM/whole-brain mean CBF + rCBF (norm to GM+WM)."""
     cbf = dm_to_cbf(dm_native, m0, mask=brain, m0_floor=1.0, **params)["cbf"]
-    # single-tissue regions: purity matters, so PV_TISSUE. The GM+WM union below marks
-    # brain tissue and stays at 0.5, where coverage matters instead.
+    # Two roles, two thresholds. The per-tissue means below want a region that is one tissue,
+    # so PV_TISSUE. The normalisation reference marks brain tissue, where the aim is coverage
+    # rather than purity, so it keeps 0.5 -- building it from the masks above would drop every
+    # mixed voxel and raise the denominator, pushing all rCBF down.
     gmask, wmask = gm > PV_TISSUE, wm > PV_TISSUE
-    ref = cbf[gmask | wmask].mean() if (gmask | wmask).any() else np.nan   # rCBF reference
+    tissue = (gm > 0.5) | (wm > 0.5)
+    ref = cbf[tissue].mean() if tissue.any() else np.nan   # rCBF reference
     out = {}
     for name, mk in (("gm", gmask), ("wm", wmask), ("brain", brain > 0.5)):
         v = float(cbf[mk].mean()) if mk.any() else float("nan")
