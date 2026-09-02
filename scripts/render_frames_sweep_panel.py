@@ -151,9 +151,9 @@ def _save_frames_grid(t1, union, grid, nframes, path, title="", dpi=600,
         # at that same count in every configuration used here, so it names the column;
         # a montage that stopped short of the full acquisition would mislabel it.
         ref_n = max(nframes)
-        # rot90 to match the orientation Figure 5 draws; two figures of the same brain must
-        # not disagree about which way is up.
-        rot = np.rot90
+        # Three rotations, to land in the orientation Figure 5 draws; two figures of the
+        # same brain must not disagree about which way is up.
+        rot = lambda x: np.rot90(x, 3)
         top = {}
         for r, name in enumerate(methods):
             a = cell(r, 0)
