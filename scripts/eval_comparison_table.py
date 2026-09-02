@@ -73,13 +73,27 @@ from runners.eval_baselines import (
 from utils.metrics import (
     PV_TISSUE,
     scov as _scov, cnr as _cnr, entropy_focus_criterion as _efc,
-    upsnr_components as _upsnr_components, laplacian_variance as _lapvar,
+    upsnr_components as _upsnr_components, laplacian_variance as _lapvar, _erode,
     tissue_csf_hf_ratio as _tcsf_ratio, hf_consistency as _hf_consistency,
     # full supplementary suite (2026-07-20: compute EVERYTHING the codebase offers)
     gmsd as _gmsd, gm_wm_contrast_error as _gmwm_ce, tenengrad as _tenengrad,
     image_entropy as _image_entropy, gradient_entropy as _grad_entropy,
     bright_tail_ratio as _bright_tail, mi_nmi as _mi_nmi,
 )
+
+
+def _csf_noise(img, csf, erode_iters=2, min_vox=64):
+    """Standard deviation of `img` inside the eroded CSF, or None if too little survives.
+
+    Erosion is the point: CSF stands in for the noise floor, and its boundary voxels border
+    tissue and carry perfusion, which would inflate the very quantity being used as noise.
+    """
+    m = _erode((csf > PV_TISSUE).float(), erode_iters)
+    if float(m.sum().item()) < min_vox:
+        return None
+    n = m.sum().clamp_min(1.0)
+    mu = (img * m).sum() / n
+    return ((((img - mu) ** 2) * m).sum() / n).clamp_min(1e-12).sqrt()
 
 
 # thr defaults to PV_TISSUE, not 0.5: both callers want a region that is one tissue. The
@@ -501,8 +515,10 @@ def main():
             # The 12-repetition average is what the full-length acquisition delivers today, so
             # it belongs in the table as a row. Its SNR is measured the same way as every
             # method's: mean in tissue over the CSF standard deviation.
-            if csf is not None and gm is not None and wm is not None:
-                _s_ref = _masked_std(union, csf).clamp_min(1e-8)
+            _s_ref = (_csf_noise(union, csf)
+                      if (csf is not None and gm is not None and wm is not None) else None)
+            if _s_ref is not None:
+                _s_ref = _s_ref.clamp_min(1e-8)
                 snr_gm_ref = float(_masked_mean(union, gm) / _s_ref)
                 snr_wm_ref = float(_masked_mean(union, wm) / _s_ref)
             else:
@@ -543,8 +559,10 @@ def main():
                 efc_v = _efc(pred, brain)
                 # tissue SNR = mean_tissue(pred) / std_CSF(pred); CSF ΔM≈0 -> σ_CSF is the
                 # noise floor (same definition as eval_select_ckpt's pooled_snr_gm/wm).
-                if csf is not None and gm is not None and wm is not None:
-                    sig_csf = _masked_std(pred, csf).clamp_min(1e-8)
+                sig_csf = (_csf_noise(pred, csf)
+                           if (csf is not None and gm is not None and wm is not None) else None)
+                if sig_csf is not None:
+                    sig_csf = sig_csf.clamp_min(1e-8)
                     snr_gm = float(_masked_mean(pred, gm) / sig_csf)
                     snr_wm = float(_masked_mean(pred, wm) / sig_csf)
                 else:

@@ -105,6 +105,21 @@ def _t1_structural_sim(img, t1, mask):
     return _masked_pearson(_grad_mag(img), _grad_mag(t1), mask)
 
 
+def _csf_noise(img, csf, erode_iters=2, min_vox=64):
+    """Standard deviation inside the eroded CSF, or None if too little survives.
+
+    CSF stands in for the noise floor; its boundary voxels border tissue and carry perfusion,
+    which would inflate the quantity being used as noise. Same erosion as the comparison table.
+    """
+    from utils.metrics import _erode
+    m = _erode((csf > _PV_TISSUE).float(), erode_iters)
+    if float(m.sum().item()) < min_vox:
+        return None
+    n = m.sum().clamp_min(1.0)
+    mu = (img * m).sum() / n
+    return ((((img - mu) ** 2) * m).sum() / n).clamp_min(1e-12).sqrt()
+
+
 # Single-tissue regions, so the threshold is PV_TISSUE rather than 0.5 -- see utils/metrics.
 from utils.metrics import PV_TISSUE as _PV_TISSUE
 
@@ -461,10 +476,12 @@ def _validate_with_per_unit_umse(runner) -> dict:
             snr_gm_b = snr_wm_b = snr_gm_ref_b = snr_wm_ref_b = float("nan")
             if (pack.get("csf") is not None and pack.get("gm") is not None
                     and pack.get("wm") is not None):
-                sig_csf = _masked_std(out, pack["csf"]).clamp_min(1e-8)
+                _c = _csf_noise(out, pack["csf"])
+                sig_csf = (_c if _c is not None else _masked_std(out, pack["csf"])).clamp_min(1e-8)
                 snr_gm_b = float(_masked_mean(out, pack["gm"]) / sig_csf)
                 snr_wm_b = float(_masked_mean(out, pack["wm"]) / sig_csf)
-                sig_csf_ref = _masked_std(union, pack["csf"]).clamp_min(1e-8)
+                _cr = _csf_noise(union, pack["csf"])
+                sig_csf_ref = (_cr if _cr is not None else _masked_std(union, pack["csf"])).clamp_min(1e-8)
                 snr_gm_ref_b = float(_masked_mean(union, pack["gm"]) / sig_csf_ref)
                 snr_wm_ref_b = float(_masked_mean(union, pack["wm"]) / sig_csf_ref)
                 snr_gm_sum += snr_gm_b
