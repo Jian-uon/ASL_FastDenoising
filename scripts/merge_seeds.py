@@ -92,8 +92,24 @@ def write(path, fields, rows):
     print("  wrote %s (%d rows)" % (path, len(rows)))
 
 
+def ensure_cnr_csf(rows):
+    """Back-fill cnr_csf on a CSV written before the evaluation emitted it.
+
+    The reported gray-white contrast is (mu_GM - mu_WM)/sigma_CSF, which is identically
+    snr_gm - snr_wm because both SNRs already carry that sigma_CSF. Deriving it here lets the
+    figures and Table 1 be redrawn from an existing sweep without re-running inference.
+    """
+    if not rows or "cnr_csf" in rows[0]:
+        return rows
+    for r in rows:
+        g, w = fnum(r.get("snr_gm", "nan")), fnum(r.get("snr_wm", "nan"))
+        r["cnr_csf"] = "" if (g != g or w != w) else repr(g - w)
+    print("  cnr_csf back-filled from snr_gm - snr_wm (%d rows)" % len(rows))
+    return rows
+
+
 def merge_long(src, dst, seeds=None):
-    rows = read(src)
+    rows = ensure_cnr_csf(read(src))
     if not rows:
         raise SystemExit("empty: %s" % src)
     metrics = [c for c in rows[0] if c not in ID_LONG]
@@ -124,7 +140,7 @@ def merge_long(src, dst, seeds=None):
 
 
 def merge_summary(src, dst, seeds=None):
-    rows = read(src)
+    rows = ensure_cnr_csf(read(src))
     if not rows:
         raise SystemExit("empty: %s" % src)
     metrics = [c for c in rows[0] if c not in ID_SUMM]

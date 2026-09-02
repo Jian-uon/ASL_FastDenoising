@@ -55,7 +55,7 @@ MARKERS = {"naive_mean": "s", "vanilla_N2N": "^", "SwinIR_N2N": "D", "proposed":
 # White matter is not shown. The measure is defined on gray matter by the work it cites, and
 # white-matter perfusion at this field and PLD sits close to the noise floor, where a ratio
 # with that mean in the denominator mostly reports smoothing. Figure 3 and Table 1 carry it.
-PANELS = [("cnr", "GM-WM CNR", "↑"),
+PANELS = [("cnr_csf", "GM-WM CNR", "↑"),
           ("scov_gm", "sCoV$_{GM}$", "↓"),
           ("snr_gm", "SNR$_{GM}$", "↑")]
 
