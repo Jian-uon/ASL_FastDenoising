@@ -59,10 +59,27 @@ def regional_cbf(dm_native, m0, brain, gm, wm, params):
     return out, cbf
 
 
-def recon_fidelity(dm_n, dm_ref, brain):
-    """Recon-space agreement of accelerated vs reference dM within brain."""
+def rcbf_map(cbf, gm, wm):
+    """CBF divided by its own GM+WM mean -- the map the figures and the table report.
+
+    The reference is the tissue mean, not the whole-brain mean: the latter is inflated by CSF
+    and by the partial-volume rim at the brain edge, which would put the maps on a different
+    scale from the rcbf_gm / rcbf_wm numbers reported beside them.
+    """
+    tis = (gm > 0.5) | (wm > 0.5)
+    r = float(cbf[tis].mean()) if tis.any() else 1.0
+    return cbf / (r + 1e-6)
+
+
+def recon_fidelity(r_n, r_ref, brain):
+    """Voxel-wise agreement of accelerated vs reference rCBF within brain.
+
+    Taken on rCBF rather than on dM so that it sits in the same space as the intraclass
+    correlations reported beside it. The two are not interchangeable: quantification divides
+    by M0 voxel by voxel, which is spatial, so it moves the correlation rather than scaling it.
+    """
     b = brain > 0.5
-    a, r = dm_n[b], dm_ref[b]
+    a, r = r_n[b], r_ref[b]
     corr = float(np.corrcoef(a, r)[0, 1]) if a.size > 2 else float("nan")
     nrmse = float(np.sqrt(np.mean((a - r) ** 2)) / (r.mean() + 1e-6))
     return {"recon_corr": corr, "recon_nrmse": nrmse}
@@ -280,14 +297,16 @@ def main():
 
         ref_src = dm_mean if (args.ref_arm == "mean" and dm_mean) else dm_native
         ref = ref_src[args.ref_frames]
+        _, _ref_cbf = regional_cbf(ref, m0, brain, gm, wm, params)
+        ref_rcbf = rcbf_map(_ref_cbf, gm, wm)
         rcbf_maps = {}
         for n in ns:
             reg, cbf = regional_cbf(dm_native[n], m0, brain, gm, wm, params)
-            fid = recon_fidelity(dm_native[n], ref, brain)
+            fid = recon_fidelity(rcbf_map(cbf, gm, wm), ref_rcbf, brain)
             rows.append({"subject": sid, "n_frames": n, "arm": "model", **reg, **fid})
             if n in dm_van:
                 vreg, vcbf = regional_cbf(dm_van[n], m0, brain, gm, wm, params)
-                vfid = recon_fidelity(dm_van[n], ref, brain)
+                vfid = recon_fidelity(rcbf_map(vcbf, gm, wm), ref_rcbf, brain)
                 rows.append({"subject": sid, "n_frames": n, "arm": "vanilla", **vreg, **vfid})
                 if args.save_maps:
                     _t2 = (gm > 0.5) | (wm > 0.5)
@@ -298,7 +317,7 @@ def main():
                              os.path.join(_o2, f"rcbf_vanilla_n{n}.nii.gz"))
             if n in dm_mean:
                 mreg, mcbf = regional_cbf(dm_mean[n], m0, brain, gm, wm, params)
-                mfid = recon_fidelity(dm_mean[n], ref, brain)
+                mfid = recon_fidelity(rcbf_map(mcbf, gm, wm), ref_rcbf, brain)
                 rows.append({"subject": sid, "n_frames": n, "arm": "mean", **mreg, **mfid})
                 if args.save_maps:
                     _tis = (gm > 0.5) | (wm > 0.5)
