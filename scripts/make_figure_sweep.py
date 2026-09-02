@@ -107,16 +107,21 @@ def main() -> int:
         # No reference rule. Repetition averaging at the full count is the last point of the
         # repetition-averaging curve, so a line across the panel would draw the same number
         # twice.
+        # Plotted against position, not against k: the grid skips 11, so a linear axis would
+        # leave one gap twice as wide as the others for no reason a reader could use.
+        pos = {k: i for i, k in enumerate(ks)}
         for m in methods:
             xs = [k for k in ks if col in data[m].get(k, {})]
             ys = [data[m][k][col][0] for k in xs]
             if not xs:
                 continue
-            ax.plot(xs, ys, marker=MARKERS[m], ms=4.5, lw=1.6,
+            ax.plot([pos[k] for k in xs], ys, marker=MARKERS[m], ms=4.5, lw=1.6,
                     color=COLORS[m], label=PAPER_NAME.get(m, m), zorder=3)
-        ax.set_xlabel("Repetitions entering the reconstruction", fontsize=9)
+        ax.set_xlabel("Number of repetitions", fontsize=9)
         ax.set_title("%s %s" % (label, arrow), fontsize=10)
-        ax.set_xticks(ks)
+        ax.set_xticks(range(len(ks)))
+        ax.set_xticklabels([str(k) for k in ks])
+        ax.set_xlim(-0.4, len(ks) - 0.6)
         ax.tick_params(labelsize=8)
         ax.grid(alpha=0.25)
 

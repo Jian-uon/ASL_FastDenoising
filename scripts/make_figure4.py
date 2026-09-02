@@ -201,7 +201,7 @@ def main() -> int:
         ax.annotate("reference\n(identity)", (ref_k, 1.0), xytext=(-6, -14),
                     textcoords="offset points", ha="right", va="top", fontsize=8,
                     color="#555555")
-    ax.set_xlabel("Repetitions entering the reconstruction")
+    ax.set_xlabel("Number of repetitions")
     # Name the reference on the axis. "the full acquisition" left it to the caption, and the
     # panel is read on its own; which image the curves are measured against is the whole
     # meaning of the last point.
