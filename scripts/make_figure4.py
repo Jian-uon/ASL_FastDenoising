@@ -150,7 +150,7 @@ def main() -> int:
     nr = len(rows_fig)
     fig = plt.figure(figsize=(13.5, 2.7 + 2.4 * nr))
     top_lo = 0.36 if nr >= 3 else 0.48
-    gs_top = fig.add_gridspec(nr, len(kk), left=0.03, right=0.90,
+    gs_top = fig.add_gridspec(nr, len(kk), left=0.055, right=0.90,
                               top=0.95, bottom=top_lo, wspace=0.05, hspace=0.08)
     gs_bot = fig.add_gridspec(1, 1, left=0.31, right=0.73,
                               top=top_lo - 0.07, bottom=0.06)
@@ -167,6 +167,10 @@ def main() -> int:
                           interpolation="nearest")
             ax.set_xticks([])
             ax.set_yticks([])
+            # The row identifier is a patient name, so the label counts rows instead; which
+            # subject each row is, and the percentile it was drawn at, are printed to stdout.
+            if j == 0:
+                ax.set_ylabel("Subject %d" % (i + 1), fontsize=10)
             if i == 0:
                 ax.set_title("Full acquisition\n(%d rep. averaged)" % ref_k
                              if k == REF_COL else "%d repetitions" % k, fontsize=10)
@@ -198,7 +202,11 @@ def main() -> int:
                     textcoords="offset points", ha="right", va="top", fontsize=8,
                     color="#555555")
     ax.set_xlabel("Repetitions entering the reconstruction")
-    ax.set_ylabel("Agreement with the full acquisition")
+    # Name the reference on the axis. "the full acquisition" left it to the caption, and the
+    # panel is read on its own; which image the curves are measured against is the whole
+    # meaning of the last point.
+    ax.set_ylabel("Agreement with the %d-repetition %s"
+                  % (ref_k, "average" if ref_arm == "mean" else "reconstruction"))
     ax.set_xticks(xs)
     lo = min(min(r[k] for r in d["summary"])
              for k in ("icc_rcbf_gm", "icc_rcbf_wm", "recon_corr"))

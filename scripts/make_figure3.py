@@ -113,8 +113,10 @@ def box(ax, series, labels, colors, zero_line=False):
         ax.plot([i] * len(s), s, ".", ms=3, color="#33333355", zorder=3)
     if zero_line:
         ax.axhline(0.0, color="#c0392b", lw=1.2, ls="--", zorder=1)
+    # The methods are named once, in the figure legend; repeating them under every panel
+    # spent four lines of text on the same four words.
     ax.set_xticks(range(1, len(labels) + 1))
-    ax.set_xticklabels(labels, fontsize=8)
+    ax.set_xticklabels([""] * len(labels))
     ax.grid(axis="y", alpha=0.25)
     return ok
 
@@ -160,7 +162,14 @@ def main() -> int:
     span = ("%d to %d" % (lo, hi)) if sorted(a.ks) == list(range(lo, hi + 1)) else ktxt
     fig.suptitle("Per-subject distributions over %s repetitions (n=%d held-out subjects)"
                  % (span, len(subs)), fontsize=12)
-    fig.tight_layout(rect=(0, 0, 1, 0.96))
+    # Legend after tight_layout, into the strip tight_layout was told to leave free; adding it
+    # first puts it inside the axes, because tight_layout then lays the panels out over it.
+    fig.tight_layout(rect=(0, 0.10, 1, 0.96))
+    from matplotlib.patches import Patch
+    handles = [Patch(facecolor=COLORS[m], edgecolor="#333333", alpha=0.85,
+                     label=PAPER_NAME[m].replace(chr(10), "")) for m in methods]
+    fig.legend(handles=handles, loc="lower center", ncol=len(methods),
+               frameon=False, fontsize=10)
 
     out = a.out or os.path.join(a.dir, "figures", "Figure3_%s.png" % a.fidelity)
     os.makedirs(os.path.dirname(out), exist_ok=True)

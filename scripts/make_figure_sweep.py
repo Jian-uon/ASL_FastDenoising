@@ -122,10 +122,12 @@ def main() -> int:
 
     ref_col = PANELS[0][0]
     n_sub = max(data[m][ks[0]][ref_col][1] for m in methods)
-    axes[0].legend(fontsize=8, frameon=False, loc="lower right")
+    h, l = axes[0].get_legend_handles_labels()
+    fig.legend(h, l, loc="lower center", ncol=len(methods), frameon=False, fontsize=9,
+               bbox_to_anchor=(0.5, -0.01))
     fig.suptitle("Performance against acquisition length (n=%d held-out subjects)" % n_sub,
                  fontsize=12)
-    fig.tight_layout(rect=(0, 0, 1, 0.94))
+    fig.tight_layout(rect=(0, 0.06, 1, 0.94))
 
     out = a.out or os.path.join(a.dir, "figures", "Figure_sweep.png")
     os.makedirs(os.path.dirname(out), exist_ok=True)
