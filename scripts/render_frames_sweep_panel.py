@@ -50,6 +50,9 @@ def parse_args():
     p.add_argument("--split", default="test", choices=["val", "test"])
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--slice_context", type=int, default=0, help="MUST match training (0=2D, 2=2.5D 5-slice).")
+    p.add_argument("--error_column", action="store_true",
+                   help="add the |error| column at the shortest acquisition; a diagnostic, "
+                        "and off by default because the paper figure does not carry it.")
     p.add_argument("--dpi", type=int, default=600,
                    help="600 for print; the montage was previously written at 110")
     p.add_argument("--n_frames", type=int, nargs="+", default=[2, 4, 6, 8, 12],
@@ -98,7 +101,11 @@ PAPER_NAME = {
 }
 
 
-def _save_frames_grid(t1, union, grid, nframes, path, title="", dpi=600):
+SPACER = 0.22      # width of the gap column, as a fraction of one panel
+
+
+def _save_frames_grid(t1, union, grid, nframes, path, title="", dpi=600,
+                      show_error=False):
     """One subject: rows = methods, cols = [12-NEX ref | each n_frames]. Shared
     in-brain window from the reference percentiles (same convention as
     eval_comparison_table._save_panel). No-op-safe on failure."""
@@ -121,26 +128,47 @@ def _save_frames_grid(t1, union, grid, nframes, path, title="", dpi=600):
         res = {m: np.abs(grid[m][k_res][0, 0].cpu().numpy() * brain - u) for m in methods}
         rb = np.concatenate([r[brain > 0] for r in res.values()]) if brain.any() else np.array([0.0])
         rmax = float(np.percentile(rb, 99)) if rb.size else 1.0
-        nrow, ncol = len(methods), len(nframes) + 2
-        fig, ax = plt.subplots(nrow, ncol, figsize=(2.4 * ncol, 2.4 * nrow), squeeze=False)
-        for r, name in enumerate(methods):
-            ax[r][0].imshow(u, cmap="gray", vmin=vmin, vmax=vmax)
-            ax[r][0].set_ylabel(PAPER_NAME.get(name, name), fontsize=8)
-            if r == 0:
-                ax[r][0].set_title("Full acquisition\n(12 rep.)", fontsize=8)
-            for c, nf in enumerate(nframes, start=1):
-                pm = grid[name][nf][0, 0].cpu().numpy() * brain
-                ax[r][c].imshow(pm, cmap="gray", vmin=vmin, vmax=vmax)
-                if r == 0:
-                    ax[r][c].set_title(f"{nf} rep.", fontsize=8)
-            ax[r][ncol - 1].imshow(res[name], cmap="inferno", vmin=0.0, vmax=rmax)
-            if r == 0:
-                ax[r][ncol - 1].set_title(f"|error| at {k_res} rep.", fontsize=8)
-        for a in ax.ravel():
+
+        # Column 0 is the acquired image; everything right of the spacer is a reconstruction.
+        # The gap says so without a word of caption. The residual column is off by default: it
+        # is a diagnostic, and the figure the paper carries does not use it.
+        nrow = len(methods)
+        ncol = len(nframes) + 1 + (1 if show_error else 0)
+        fig = plt.figure(figsize=(2.35 * ncol + 0.7, 2.35 * nrow + 0.45))
+        gs = fig.add_gridspec(nrow, ncol + 1, width_ratios=[1.0, SPACER] + [1.0] * (ncol - 1),
+                              left=0.055, right=0.995, top=0.90, bottom=0.01,
+                              wspace=0.045, hspace=0.045)
+
+        def cell(r, c):                       # c counts real columns, skipping the spacer
+            a = fig.add_subplot(gs[r, c if c == 0 else c + 1])
             a.set_xticks([]); a.set_yticks([])
-        fig.suptitle(f"subject {title}", fontsize=9)
-        fig.tight_layout()
-        fig.savefig(path, dpi=dpi, bbox_inches="tight")
+            for sp in a.spines.values():
+                sp.set_visible(False)
+            return a
+
+        # The reference column is the union of every acquired repetition. --n_frames ends
+        # at that same count in every configuration used here, so it names the column;
+        # a montage that stopped short of the full acquisition would mislabel it.
+        ref_n = max(nframes)
+        for r, name in enumerate(methods):
+            a = cell(r, 0)
+            a.imshow(u, cmap="gray", vmin=vmin, vmax=vmax)
+            a.set_ylabel(PAPER_NAME.get(name, name), fontsize=12)
+            if r == 0:
+                a.set_title("Full acquisition\n(%d rep. averaged)" % ref_n, fontsize=12)
+            for c, nf in enumerate(nframes, start=1):
+                a = cell(r, c)
+                a.imshow(grid[name][nf][0, 0].cpu().numpy() * brain,
+                         cmap="gray", vmin=vmin, vmax=vmax)
+                if r == 0:
+                    a.set_title("%d repetitions" % nf, fontsize=12)
+            if show_error:
+                a = cell(r, ncol - 1)
+                a.imshow(res[name], cmap="inferno", vmin=0.0, vmax=rmax)
+                if r == 0:
+                    a.set_title("|error| at %d rep." % k_res, fontsize=12)
+        # The subject identifier is a patient name; it stays in the file name, off the figure.
+        fig.savefig(path, dpi=dpi, bbox_inches="tight", facecolor="white")
         plt.close(fig)
         print(f"[frames-montage] wrote {path}")
     except Exception as e:
@@ -228,7 +256,7 @@ def main():
             grid[name] = {nf: fn(pack, nf, k) for nf in args.n_frames}
         _save_frames_grid(t1, union, grid, args.n_frames,
                           os.path.join(args.out_dir, f"frames_{k:02d}_{sid}.png"),
-                          title=str(sid), dpi=args.dpi)
+                          title=str(sid), dpi=args.dpi, show_error=args.error_column)
 
     print(f"[frames-montage] done -> {args.out_dir}  ({len(picks)} slices)")
 
