@@ -87,6 +87,15 @@ def gmsd(pred: Tensor, target: Tensor, mask: Optional[Tensor] = None,
 # at 0.5. Anything importing this constant is asking for a single-tissue region.
 PV_TISSUE = 0.7
 
+# CSF stands in for the noise floor, so the requirement on its ROI is purity: a voxel that
+# still holds tissue carries perfusion and would inflate the very quantity used as noise.
+# Purity is enforced by the PV threshold rather than by eroding the mask. Measured on this
+# dataset, a 2-voxel erosion of csf > PV_TISSUE leaves a median of 30 voxels in a whole
+# 52-slice volume -- under the 64-voxel floor for 92% of evaluation batches, which turns the
+# SNR column into NaN. csf > PV_CSF_PURE keeps ~3.6k voxels and 71% of batches, and a voxel
+# that is 90% CSF by partial volume is not a boundary voxel to begin with.
+PV_CSF_PURE = 0.9
+
 # ---------------------------------------------------------------------------
 # GM/WM contrast ratio error
 # ---------------------------------------------------------------------------

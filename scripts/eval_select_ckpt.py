@@ -105,14 +105,14 @@ def _t1_structural_sim(img, t1, mask):
     return _masked_pearson(_grad_mag(img), _grad_mag(t1), mask)
 
 
-def _csf_noise(img, csf, erode_iters=2, min_vox=64):
-    """Standard deviation inside the eroded CSF, or None if too little survives.
+def _csf_noise(img, csf, erode_iters=0, min_vox=64):
+    """Standard deviation inside pure CSF, or None if too little survives.
 
-    CSF stands in for the noise floor; its boundary voxels border tissue and carry perfusion,
-    which would inflate the quantity being used as noise. Same erosion as the comparison table.
+    CSF stands in for the noise floor, so the ROI must hold no tissue; purity comes from the
+    PV threshold rather than from eroding the mask. Same definition as the comparison table.
     """
-    from utils.metrics import _erode
-    m = _erode((csf > _PV_TISSUE).float(), erode_iters)
+    from utils.metrics import _erode, PV_CSF_PURE
+    m = _erode((csf > PV_CSF_PURE).float(), erode_iters)
     if float(m.sum().item()) < min_vox:
         return None
     n = m.sum().clamp_min(1.0)

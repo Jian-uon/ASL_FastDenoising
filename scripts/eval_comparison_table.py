@@ -71,7 +71,7 @@ from runners.eval_baselines import (
     hfen as _hfen,
 )
 from utils.metrics import (
-    PV_TISSUE,
+    PV_TISSUE, PV_CSF_PURE,
     scov as _scov, cnr as _cnr, entropy_focus_criterion as _efc,
     upsnr_components as _upsnr_components, laplacian_variance as _lapvar, _erode,
     tissue_csf_hf_ratio as _tcsf_ratio, hf_consistency as _hf_consistency,
@@ -82,13 +82,14 @@ from utils.metrics import (
 )
 
 
-def _csf_noise(img, csf, erode_iters=2, min_vox=64):
-    """Standard deviation of `img` inside the eroded CSF, or None if too little survives.
+def _csf_noise(img, csf, erode_iters=0, min_vox=64):
+    """Standard deviation of `img` inside pure CSF, or None if too little survives.
 
-    Erosion is the point: CSF stands in for the noise floor, and its boundary voxels border
-    tissue and carry perfusion, which would inflate the very quantity being used as noise.
+    Purity is the point -- CSF stands in for the noise floor, and a voxel that still holds
+    tissue carries perfusion -- but it is enforced by the PV threshold, not by eroding the
+    mask; see PV_CSF_PURE for why erosion does not survive this data.
     """
-    m = _erode((csf > PV_TISSUE).float(), erode_iters)
+    m = _erode((csf > PV_CSF_PURE).float(), erode_iters)
     if float(m.sum().item()) < min_vox:
         return None
     n = m.sum().clamp_min(1.0)
