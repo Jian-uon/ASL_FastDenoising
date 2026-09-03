@@ -121,13 +121,11 @@ def main() -> int:
     heads = ["Method", "uMSE", "uPSNR (dB)"] + [h for _, h, _ in REF_COLS]
     caption = (
         "**Table 1. Reconstruction performance.** Every method reconstructs from %s of the "
-        "twelve acquired repetitions, drawn uniformly per slice, which is the range over which "
-        "checkpoints were selected. Repetition averaging is the arithmetic mean of the same "
-        "repetitions each network was given. uMSE is pooled over the test set and so carries no "
-        "standard deviation; uPSNR follows from it. The reference-free measures are the mean "
-        "$%spm$ SD across the %d test subjects, each subject contributing the average over its "
-        "own slices and acquisition lengths. Performance against acquisition length is shown in "
-        "Fig. 4." % (span, BS, n_sub))
+        "twelve acquired repetitions, drawn uniformly per slice; repetition averaging is the "
+        "arithmetic mean of the same repetitions each network was given. uMSE is pooled over "
+        "the test set and carries no standard deviation, the reference-free measures are the "
+        "mean $%spm$ SD across the %d test subjects, and figures for the proposed model are "
+        "the mean over its three training runs." % (span, BS, n_sub))
 
     md = [caption, "", "| " + " | ".join(heads) + " |",
           "|" + "|".join(["---"] * len(heads)) + "|"]
