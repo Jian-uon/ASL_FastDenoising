@@ -33,11 +33,10 @@ PAPER_NAME = {
 ORDER = ["naive_mean", "vanilla_N2N", "SwinIR_N2N", "proposed"]
 
 # (per-subject column, header, decimals)
-# White matter is here rather than in a figure. The coefficient of variation is defined on gray
-# matter by the work it cites, and in white matter its denominator sits near the noise floor,
-# so the ratio tracks smoothing; it is still the measure on which the ranking reverses, so it
-# is reported where Section 3.2 can point at it.
-REF_COLS = [("cnr_csf", "CNR", 3), ("scov_gm", "sCoV$_{GM}$", 3), ("scov_wm", "sCoV$_{WM}$", 3),
+# White matter is not a column. The coefficient of variation is defined on gray matter by the
+# work it cites, and in white matter its denominator sits near the noise floor, so the ratio
+# tracks smoothing rather than quality; Section 3.2 quotes the two values it needs inline.
+REF_COLS = [("cnr_csf", "CNR", 3), ("scov_gm", "sCoV$_{GM}$", 3),
             ("snr_gm", "SNR$_{GM}$", 2)]
 
 
@@ -120,12 +119,11 @@ def main() -> int:
             else ", ".join(str(k) for k in ks))
     heads = ["Method", "uMSE", "uPSNR (dB)"] + [h for _, h, _ in REF_COLS]
     caption = (
-        "**Table 1. Reconstruction performance.** Every method reconstructs from %s of the "
-        "twelve acquired repetitions, drawn uniformly per slice; repetition averaging is the "
-        "arithmetic mean of the same repetitions each network was given. uMSE is pooled over "
-        "the test set and carries no standard deviation, the reference-free measures are the "
-        "mean $%spm$ SD across the %d test subjects, and figures for the proposed model are "
-        "the mean over its three training runs." % (span, BS, n_sub))
+        "**Table 1. Reconstruction performance.** Every method, repetition averaging "
+        "included, reconstructs from the same %s of the twelve acquired repetitions, "
+        "drawn uniformly per slice. uMSE is pooled over the test set; the other measures "
+        "are the mean $%spm$ SD across the %d test subjects, and over the three training "
+        "runs for the proposed model." % (span, BS, n_sub))
 
     md = [caption, "", "| " + " | ".join(heads) + " |",
           "|" + "|".join(["---"] * len(heads)) + "|"]
