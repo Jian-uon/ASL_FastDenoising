@@ -246,10 +246,9 @@ Full figure/table checklist and the training matrix: `docs/v35_paper/experiment_
   The plumbing stays in place — `--w_anat_roi` on the runner, `W_ANAT` on
   `submit_v35_joint.sh`, the B1 rows in the matrix — so the arm is one flag away if a reviewer
   asks, but it should not be re-run speculatively.
-  *Consequence:* **Figure 1 must be corrected.** It draws the T1 decoder, a "Reconstructed T1w"
-  output and an MSE loss on it. None of the three exists in the reference model, the loss is a
-  masked L1 rather than an MSE, and the figure contradicts its own caption ("The T1 path has no
-  decoder"). It was left standing only while this arm might have won.
+  *Consequence:* Figure 1 was redrawn 2026-09-02 and now matches the reference model — T1
+  encoder only, no T1 decoder, no "Reconstructed T1w" output, and the loss shown is
+  `L_N2N + L_Grad` against the mean of set B. Do not "fix" it back.
 
 - **Band-Limited Guidance (frequency-domain content guard): REJECTED 2026-08-25 on evidence.**
   A DWT decomposition of the mismatched-T1 leakage ([scripts/leakage_spectrum.py](scripts/leakage_spectrum.py))
