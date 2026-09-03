@@ -205,16 +205,16 @@ def main() -> int:
     # Name the reference on the axis. "the full acquisition" left it to the caption, and the
     # panel is read on its own; which image the curves are measured against is the whole
     # meaning of the last point.
-    ax.set_ylabel("Agreement with the average of all %d repetitions" % ref_k
-                  if ref_arm == "mean" else
-                  "Agreement with the %d-repetition reconstruction" % ref_k)
+    ax.set_ylabel("ICC or voxel-wise correlation")
     ax.set_xticks(xs)
     lo = min(min(r[k] for r in d["summary"])
              for k in ("icc_rcbf_gm", "icc_rcbf_wm", "recon_corr"))
     ax.set_ylim(max(0.0, lo - 0.05), 1.005)
     ax.grid(alpha=0.25)
     ax.legend(fontsize=8, loc="lower right")
-    ax.set_title("Agreement against acquisition length", fontsize=10)
+    ax.set_title("Compared with the average of all %d repetitions" % ref_k
+                 if ref_arm == "mean" else
+                 "Compared with the %d-repetition reconstruction" % ref_k, fontsize=10)
 
     out = a.out or os.path.join(a.dir, "figures", "Figure4.png")
     os.makedirs(os.path.dirname(out), exist_ok=True)

@@ -51,7 +51,7 @@ def panels(fidelity):
     # ratio reports smoothing more than uniformity. Table 1 carries the white-matter value.
     return [
         ("fid",     None,          fidelity == "upsnr"),
-        ("cnr_ratio", "CNR",         True),
+        ("cnr_csf", "CNR",         True),
         ("scov_gm", "sCoV$_{GM}$", False),
         ("snr_gm",  "SNR$_{GM}$",  True),
     ]
@@ -74,7 +74,7 @@ def load(path, ks, fidelity):
     another. uPSNR is taken from the averaged uMSE, since decibels do not average.
     """
     ks = set(ks)
-    cols = (("fid", "umse"), ("cnr_ratio", "cnr_ratio"), ("scov_gm", "scov_gm"), ("snr_gm", "snr_gm"))
+    cols = (("fid", "umse"), ("cnr_csf", "cnr_csf"), ("scov_gm", "scov_gm"), ("snr_gm", "snr_gm"))
     acc = {}
     for r in csv.DictReader(open(path, encoding="utf-8")):
         if int(float(r["n_frames"])) not in ks:
@@ -160,14 +160,14 @@ def main() -> int:
 
     lo, hi = min(a.ks), max(a.ks)
     span = ("%d to %d" % (lo, hi)) if sorted(a.ks) == list(range(lo, hi + 1)) else ktxt
-    fig.suptitle("Per-subject distributions over %s repetitions (n=%d held-out subjects)"
+    fig.suptitle("Per-subject distributions over %s repetitions (test set, n=%d)"
                  % (span, len(subs)), fontsize=12)
     # Legend after tight_layout, into the strip tight_layout was told to leave free; adding it
     # first puts it inside the axes, because tight_layout then lays the panels out over it.
     fig.tight_layout(rect=(0, 0.10, 1, 0.96))
     from matplotlib.patches import Patch
     handles = [Patch(facecolor=COLORS[m], edgecolor="#333333", alpha=0.85,
-                     label=PAPER_NAME[m].replace(chr(10), "")) for m in methods]
+                     label=PAPER_NAME[m].replace(chr(10), " ")) for m in methods]
     fig.legend(handles=handles, loc="lower center", ncol=len(methods),
                frameon=False, fontsize=10)
 

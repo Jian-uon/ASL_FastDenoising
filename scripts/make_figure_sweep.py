@@ -55,7 +55,7 @@ MARKERS = {"naive_mean": "s", "vanilla_N2N": "^", "SwinIR_N2N": "D", "proposed":
 # White matter is not shown. The measure is defined on gray matter by the work it cites, and
 # white-matter perfusion at this field and PLD sits close to the noise floor, where a ratio
 # with that mean in the denominator mostly reports smoothing. Figure 3 and Table 1 carry it.
-PANELS = [("cnr_ratio", "CNR", "↑"),
+PANELS = [("cnr_csf", "CNR", "↑"),
           ("scov_gm", "sCoV$_{GM}$", "↓"),
           ("snr_gm", "SNR$_{GM}$", "↑")]
 
@@ -130,7 +130,7 @@ def main() -> int:
     h, l = axes[0].get_legend_handles_labels()
     fig.legend(h, l, loc="lower center", ncol=len(methods), frameon=False, fontsize=9,
                bbox_to_anchor=(0.5, -0.01))
-    fig.suptitle("Performance against acquisition length (n=%d held-out subjects)" % n_sub,
+    fig.suptitle("Performance against acquisition length (test set, n=%d)" % n_sub,
                  fontsize=12)
     fig.tight_layout(rect=(0, 0.06, 1, 0.94))
 
