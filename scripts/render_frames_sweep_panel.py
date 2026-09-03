@@ -98,6 +98,7 @@ PAPER_NAME = {
     "naive_mean":  "Repetition\naveraging",
     "vanilla_N2N": "UNet-N2N",
     "SwinIR_N2N":  "SwinIR-N2N",
+    "asl_keys":    "ASL keys\n(no T1)",
     "proposed":    "Proposed",
 }
 

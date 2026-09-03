@@ -150,10 +150,23 @@ fi
 
 if [ "$PHASE" = all ] || [ "$PHASE" = panel ]; then
   echo "=== [eval] qualitative montage at k in {$K_MONTAGE}, $N_SUBJ subjects"
-  yhrun python scripts/render_frames_sweep_panel.py \
+  # The key-source ablation gets a row too. A3 differs from the proposed model in the
+  # anatomical input alone, so it is the arm whose images say what T1 changes; the sweep has
+  # carried its numbers all along. Added only when its checkpoint exists, as in the sweep.
+  PANEL_ARMS=""
+  _p="$EXP/logs/run_v35_joint_win2asl_seed42/checkpoints/best_umse_posthoc.pth"
+  if [ -f "$_p" ]; then
+    PANEL_ARMS="--extra_runner 'asl_keys::$_p::$(ra 42 2 asl)'"
+    echo "[eval] panel + asl_keys (A3)"
+  else
+    echo "[eval] panel - asl_keys (A3)  (no best_umse_posthoc.pth yet, skipped)"
+  fi
+  # eval, not sh: the arm spec carries spaces inside a single argument
+  eval yhrun python scripts/render_frames_sweep_panel.py \
     --config "$CONFIG" --split "$SPLIT" --seed 42 --slice_context 0 \
     --n_frames $K_MONTAGE --n_subjects "$N_SUBJ" --out_dir "$OUT/panel" \
-    --ours "$C42" --ours_runner_args "$(ra 42)" --ours_label "proposed" \
+    --ours "$C42" --ours_runner_args "'$(ra 42)'" --ours_label "proposed" \
+    $PANEL_ARMS \
     --vanilla "$CPU" --swinir_n2n "$CSW" --include_naive \
     || die "render_frames_sweep_panel.py"
 fi
