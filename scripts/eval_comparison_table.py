@@ -586,6 +586,8 @@ def main():
                 # the two and therefore survives the per-subject and per-seed averaging that
                 # the ratio in `cnr` does not.
                 cnr_csf = snr_gm - snr_wm
+                # reported gray-white contrast: sigma_CSF cancels, so this is mu_GM/mu_WM
+                cnr_ratio = (snr_gm / snr_wm) if (snr_wm == snr_wm and snr_wm > 0) else float('nan')
                 # ---- supplementary (biased ref) ----
                 valid = brain.sum().clamp_min(1.0)
                 l1 = float((((pred - union).abs()) * brain).sum().item() / valid.item())
@@ -633,7 +635,7 @@ def main():
                     # subject-level Wilcoxon aggregation.
                     "subject_id": (_sid[0] if isinstance(_sid, (list, tuple)) and _sid else _sid),
                     "umse": float(umse_batch),
-                    "cnr": float(cnr_v), "cnr_csf": float(cnr_csf), "scov_gm": float(scov_gm), "scov_wm": float(scov_wm),
+                    "cnr": float(cnr_v), "cnr_csf": float(cnr_csf), "cnr_ratio": float(cnr_ratio), "scov_gm": float(scov_gm), "scov_wm": float(scov_wm),
                     "snr_gm": snr_gm, "snr_wm": snr_wm,
                     "hfr_tcsf": float(hfr_tcsf), "tissue_hf": float(tissue_hf),
                     "hfc_corr": float(hfc_corr), "hfc_energy": float(hfc_energy),
@@ -682,7 +684,7 @@ def _ms(lst, key):
 
 def _write_outputs(args, rows, pooled, eff_frames):
     long_csv = os.path.join(args.out_dir, "comparison_long.csv")
-    fields = ["batch", "subject_id", "n_frames", "method", "umse", "cnr_csf", "cnr", "cnr_ref",
+    fields = ["batch", "subject_id", "n_frames", "method", "umse", "cnr_ratio", "cnr_csf", "cnr", "cnr_ref",
               "snr_gm_ref", "snr_wm_ref",
               "scov_gm", "scov_wm", "snr_gm", "snr_wm",
               "hfr_tcsf", "tissue_hf", "hfc_corr", "hfc_energy", "efc",
@@ -698,7 +700,7 @@ def _write_outputs(args, rows, pooled, eff_frames):
         by.setdefault((r["method"], r["n_frames"]), []).append(r)
 
     sum_csv = os.path.join(args.out_dir, "comparison_summary.csv")
-    cols = ["cnr_csf", "cnr", "cnr_ref", "hfr_tcsf", "tissue_hf", "hfc_corr", "hfc_energy",
+    cols = ["cnr_ratio", "cnr_csf", "cnr", "cnr_ref", "hfr_tcsf", "tissue_hf", "hfc_corr", "hfc_energy",
             "scov_gm", "scov_wm", "snr_gm", "snr_wm", "efc",
             "psnr_ref", "ssim_ref", "hfen", "lapvar", "lapvar_ratio",
             "gmsd", "gmwm_contrast_err", "tenengrad", "grad_entropy", "image_entropy",
@@ -939,7 +941,7 @@ def _save_ec_gates(t1, out, path):
 
 # Metric direction hints for degradation-plot y-labels (ASCII, GBK-safe). Anything
 # not listed gets its bare name (context metric — read WITH the guarded ones).
-_DEGRAD_UP = {"cnr_csf", "cnr", "cnr_ref", "upsnr", "psnr_ref", "ssim_ref", "hfr_tcsf", "hfc_corr",
+_DEGRAD_UP = {"cnr_ratio", "cnr_csf", "cnr", "cnr_ref", "upsnr", "psnr_ref", "ssim_ref", "hfr_tcsf", "hfc_corr",
               "hfc_energy", "snr_gm", "snr_wm", "tenengrad"}
 _DEGRAD_DOWN = {"umse", "scov_gm", "scov_wm", "efc", "l1_ref", "hfen", "lapvar",
                 "lapvar_ratio", "gmsd", "gmwm_contrast_err", "mi_t1", "nmi_t1"}

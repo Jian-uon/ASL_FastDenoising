@@ -128,8 +128,27 @@ def ensure_cnr_csf(rows):
     return rows
 
 
+def ensure_cnr_ratio(rows):
+    """Derive cnr_ratio = snr_gm / snr_wm, the reported gray-white contrast.
+
+    The two SNRs share one sigma_CSF, so it cancels and the column is identically the ratio of
+    the tissue means. Derived here so an existing sweep can be redrawn without re-running
+    inference; eval_comparison_table emits it directly for new runs.
+    """
+    if not rows or "cnr_ratio" in rows[0]:
+        return rows
+    n = 0
+    for r in rows:
+        g, w = fnum(r.get("snr_gm", "nan")), fnum(r.get("snr_wm", "nan"))
+        ok = g == g and w == w and w > 0
+        r["cnr_ratio"] = repr(g / w) if ok else ""
+        n += ok
+    print("  cnr_ratio derived from snr_gm / snr_wm (%d of %d rows)" % (n, len(rows)))
+    return rows
+
+
 def merge_long(src, dst, seeds=None):
-    rows = ensure_cnr_csf(warn_sparse(read(src)))
+    rows = ensure_cnr_ratio(ensure_cnr_csf(warn_sparse(read(src))))
     if not rows:
         raise SystemExit("empty: %s" % src)
     metrics = [c for c in rows[0] if c not in ID_LONG]
@@ -160,7 +179,7 @@ def merge_long(src, dst, seeds=None):
 
 
 def merge_summary(src, dst, seeds=None):
-    rows = ensure_cnr_csf(warn_sparse(read(src)))
+    rows = ensure_cnr_ratio(ensure_cnr_csf(warn_sparse(read(src))))
     if not rows:
         raise SystemExit("empty: %s" % src)
     metrics = [c for c in rows[0] if c not in ID_SUMM]

@@ -36,7 +36,7 @@ ORDER = ["naive_mean", "vanilla_N2N", "SwinIR_N2N", "proposed"]
 # White matter is not a column. The coefficient of variation is defined on gray matter by the
 # work it cites, and in white matter its denominator sits near the noise floor, so the ratio
 # tracks smoothing rather than quality; Section 3.2 quotes the two values it needs inline.
-REF_COLS = [("cnr_csf", "CNR", 3), ("scov_gm", "sCoV$_{GM}$", 3),
+REF_COLS = [("cnr_ratio", "CNR", 3), ("scov_gm", "sCoV$_{GM}$", 3),
             ("snr_gm", "SNR$_{GM}$", 2)]
 
 
