@@ -7,9 +7,9 @@ repetitions and ending at the full acquisition. Three subjects rather than one, 
 single example cannot show whether the result is typical. Every panel shares one colour scale,
 so panels are comparable to each other rather than each stretched to its own range.
 
-Bottom: the agreement statistics against acquisition length. The Bland-Altman scatters that
-used to sit beside them are gone -- Table 2 reports the bias and the limits of agreement as
-numbers, and the plots repeated that without adding anything.
+Bottom: the agreement statistics against acquisition length. Bland-Altman was dropped from
+the analysis -- only the bias was ever reported, and ICC(2,1) is an absolute-agreement
+coefficient that already charges a systematic shift against the reconstruction.
 
 Nothing here is chosen by appearance, and every choice is printed when the script runs:
 
