@@ -51,7 +51,7 @@ def panels(fidelity):
     # ratio reports smoothing more than uniformity. Table 1 carries the white-matter value.
     return [
         ("fid",     None,          fidelity == "upsnr"),
-        ("cnr_csf", "CNR",         True),
+        ("cnr_ratio", "CNR",         True),
         ("scov_gm", "sCoV$_{GM}$", False),
         ("snr_gm",  "SNR$_{GM}$",  True),
     ]
@@ -74,7 +74,7 @@ def load(path, ks, fidelity):
     another. uPSNR is taken from the averaged uMSE, since decibels do not average.
     """
     ks = set(ks)
-    cols = (("fid", "umse"), ("cnr_csf", "cnr_csf"), ("scov_gm", "scov_gm"), ("snr_gm", "snr_gm"))
+    cols = (("fid", "umse"), ("cnr_ratio", "cnr_ratio"), ("scov_gm", "scov_gm"), ("snr_gm", "snr_gm"))
     acc = {}
     for r in csv.DictReader(open(path, encoding="utf-8")):
         if int(float(r["n_frames"])) not in ks:
