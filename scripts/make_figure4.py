@@ -13,7 +13,7 @@ numbers, and the plots repeated that without adding anything.
 
 Nothing here is chosen by appearance, and every choice is printed when the script runs:
 
-* subjects -- the ones sitting at the requested percentiles of map correlation with the
+* subjects -- the ones sitting at the requested percentiles of voxel-wise correlation with
               full acquisition at the shortest reconstruction, so the rows span the cohort
               instead of showing three variations on a favourable case
 * slice    -- the same fraction through each subject's brain-bearing range, so the three rows
@@ -138,7 +138,7 @@ def main() -> int:
         z = int(round(zs[0] + a.slice_frac * (zs[-1] - zs[0]))) if zs else any3.shape[2] // 2
         rows_fig.append(("%dth percentile\nagreement" % pc, vv, z))
         # printed, not drawn: the identifier is a patient name
-        print("  %3dth pct -> %s  (map correlation = %.3f at %d rep., slice z=%d)"
+        print("  %3dth pct -> %s  (voxel-wise r = %.3f at %d rep., slice z=%d)"
               % (pc, sid, corr, k_lo, z))
     if not rows_fig:
         raise SystemExit("no subject rows could be built")
@@ -172,7 +172,7 @@ def main() -> int:
             if j == 0:
                 ax.set_ylabel("Subject %d" % (i + 1), fontsize=10)
             if i == 0:
-                ax.set_title("Full acquisition\n(%d rep. averaged)" % ref_k
+                ax.set_title("Reference\n(all %d rep. averaged)" % ref_k
                              if k == REF_COL else "%d repetitions" % k, fontsize=10)
     cax = fig.add_axes([0.915, top_lo + 0.03, 0.010, 0.92 - top_lo - 0.05])
     cb = fig.colorbar(ScalarMappable(norm=norm, cmap=a.cmap), cax=cax)
@@ -183,7 +183,7 @@ def main() -> int:
     xs = [r["n_frames"] for r in srt]
     for key, lab, style, mk, col in (("icc_rcbf_gm", "ICC$_{GM}$", "-", "o", "#2e86c1"),
                                      ("icc_rcbf_wm", "ICC$_{WM}$", "-", "s", "#1e8449"),
-                                     ("recon_corr", "Map correlation", "--", "^", "#b9770e")):
+                                     ("recon_corr", "Voxel-wise correlation", "--", "^", "#b9770e")):
         ys = [r[key] for r in srt]
         ax.plot(xs, ys, style, color=col)
         # Filled where the value was measured. Only the model-as-reference arm has a point
@@ -205,8 +205,9 @@ def main() -> int:
     # Name the reference on the axis. "the full acquisition" left it to the caption, and the
     # panel is read on its own; which image the curves are measured against is the whole
     # meaning of the last point.
-    ax.set_ylabel("Agreement with the %d-repetition %s"
-                  % (ref_k, "average" if ref_arm == "mean" else "reconstruction"))
+    ax.set_ylabel("Agreement with the average of all %d repetitions" % ref_k
+                  if ref_arm == "mean" else
+                  "Agreement with the %d-repetition reconstruction" % ref_k)
     ax.set_xticks(xs)
     lo = min(min(r[k] for r in d["summary"])
              for k in ("icc_rcbf_gm", "icc_rcbf_wm", "recon_corr"))
