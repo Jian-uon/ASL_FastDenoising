@@ -36,12 +36,13 @@ PAPER_NAME = {
     "naive_mean": "Repetition\naveraging",
     "vanilla_N2N": "UNet\n-N2N",
     "SwinIR_N2N": "SwinIR\n-N2N",
+    "UNet_T1concat": "UNet-N2N\n+T1",
     "proposed": "Proposed",
 }
-ORDER = ["naive_mean", "vanilla_N2N", "SwinIR_N2N", "proposed"]
-COMPARATORS = ["vanilla_N2N", "SwinIR_N2N"]
+ORDER = ["naive_mean", "vanilla_N2N", "SwinIR_N2N", "UNet_T1concat", "proposed"]
+COMPARATORS = ["vanilla_N2N", "SwinIR_N2N", "UNet_T1concat"]
 COLORS = {"naive_mean": "#b0b0b0", "vanilla_N2N": "#7fb3d5",
-          "SwinIR_N2N": "#f0b27a", "proposed": "#7dcea0"}
+          "SwinIR_N2N": "#f0b27a", "UNet_T1concat": "#7d3c98", "proposed": "#7dcea0"}
 
 # (key, axis label, higher-is-better). The fidelity panel's direction follows --fidelity:
 # uPSNR is higher-better, uMSE is lower-better.

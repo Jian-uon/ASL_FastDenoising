@@ -170,8 +170,12 @@ def parse_args():
                    help="SwinIR2D (mode=sup) — recent-architecture supervised reference (Shou et al., 2024)")
     p.add_argument("--swinir_n2n", action="append", default=[],
                    help="SwinIR2D (mode=n2n) — optional same-regime (self-supervised) SwinIR")
-    p.add_argument("--concat", type=str, default=None,
-                   help="PlainUNet2D t1_concat — unguarded T1-concat baseline (A1, PlainUNet variant)")
+    # Repeatable like --vanilla and --swinir_n2n: one checkpoint per seed, labelled by the
+    # seed in its path, which is what merge_seeds groups back together.
+    p.add_argument("--concat", action="append", default=[],
+                   help="PlainUNet2D with t1_concat: [mean(setA); T1] as a 2-channel input. "
+                        "The conventional-fusion control, where T1 reaches the output through "
+                        "the same convolutions as the perfusion data.")
     p.add_argument("--pv_affine_control", type=str, default=None,
                    help="PV-affine reviewer control: name of an ASL-only source method already in "
                         "the table (e.g. 'CIG-VSS+EC_T1-off' or 'vanilla_N2N'). Adds a synthetic "
@@ -433,9 +437,10 @@ def main():
         _m = load_unet(_ck, args, device)
         methods["SwinIR_N2N%s" % _seed_suffix(_ck)] = (
             lambda pack, nf, k, m=_m: run_unet(m, _presubset_pack(pack, nf, args.seed, k, device), 0, device))
-    if getattr(args, "concat", None):
-        m_cat = load_unet(args.concat, args, device)
-        methods["PlainUNet_concat"] = lambda pack, nf, k, m=m_cat: run_unet(m, _presubset_pack(pack, nf, args.seed, k, device), 0, device)
+    for _ck in (getattr(args, "concat", None) or []):
+        _m = load_unet(_ck, args, device)
+        methods["UNet_T1concat%s" % _seed_suffix(_ck)] = (
+            lambda pack, nf, k, m=_m: run_unet(m, _presubset_pack(pack, nf, args.seed, k, device), 0, device))
     ours_runner = None
     if args.ours and args.ours_runner_args:
         ours_runner = build_ours_runner(args)

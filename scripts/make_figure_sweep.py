@@ -43,12 +43,14 @@ PAPER_NAME = {
     "naive_mean":  "Repetition averaging",
     "vanilla_N2N": "UNet-N2N",
     "SwinIR_N2N":  "SwinIR-N2N",
+    "UNet_T1concat": "UNet-N2N+T1",
     "proposed":    "Proposed",
 }
-ORDER = ["naive_mean", "vanilla_N2N", "SwinIR_N2N", "proposed"]
+ORDER = ["naive_mean", "vanilla_N2N", "SwinIR_N2N", "UNet_T1concat", "proposed"]
 COLORS = {"naive_mean": "#b0b0b0", "vanilla_N2N": "#7fb3d5",
-          "SwinIR_N2N": "#f0b27a", "proposed": "#c0392b"}
-MARKERS = {"naive_mean": "s", "vanilla_N2N": "^", "SwinIR_N2N": "D", "proposed": "o"}
+          "SwinIR_N2N": "#f0b27a", "UNet_T1concat": "#7d3c98", "proposed": "#c0392b"}
+MARKERS = {"naive_mean": "s", "vanilla_N2N": "^", "SwinIR_N2N": "D",
+           "UNet_T1concat": "v", "proposed": "o"}
 
 # (column, axis label, arrow marking the direction of improvement)
 #

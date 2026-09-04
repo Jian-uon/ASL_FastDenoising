@@ -12,6 +12,9 @@
 #
 #   ARCH=plainunet  PlainUNet2D — doubles as the no-T1 lower bound
 #   ARCH=swinir     SwinIR-light Transformer denoiser (recent-architecture reference)
+#   T1_CONCAT=1     feed [mean(setA); T1] as a 2-channel input -- the naive fusion
+#                   control: T1 reaches the value/output path directly, where the
+#                   proposed model lets it reach only the attention keys
 #
 # Usage — SUBMIT FROM THE REPO ROOT (see submit_v35_joint.sh for why that matters):
 #   ARCH=plainunet yhbatch env/hpc/slurm/submit_baseline.sh
@@ -33,8 +36,10 @@ nvidia-smi -L || true
 
 RUNNER=runners/train_baseline.py
 ARCH=${ARCH:-plainunet}
+T1_CONCAT=${T1_CONCAT:-0}
+if [ "$T1_CONCAT" = 1 ]; then CFLAGS="--t1_concat"; CTAG="_t1cat"; else CFLAGS=""; CTAG=""; fi
 SEED=${SEED:-42}
-RUN_NAME=run_base_${ARCH}_n2n_seed$SEED
+RUN_NAME=run_base_${ARCH}${CTAG}_n2n_seed$SEED
 . env/hpc/slurm/already_trained.sh
 if [ "${FORCE:-0}" != "1" ] && already_trained "$RUN_NAME" "${MIN_EPOCHS:-200}"; then
   exit 0
@@ -43,13 +48,13 @@ MAX_STEPS=${MAX_STEPS:-500}
 SAVE_EVERY=${SAVE_EVERY:-50}
 EXTRA="${EXTRA:-}"
 
-echo "=== [baseline] arch=$ARCH mode=n2n seed=$SEED max_steps=$MAX_STEPS ==="
+echo "=== [baseline] arch=$ARCH$CTAG mode=n2n seed=$SEED max_steps=$MAX_STEPS ==="
 yhrun torchrun --nnodes=1 --nproc_per_node=1 --master_port="$MASTER_PORT" $RUNNER \
-  --mode n2n --arch "$ARCH" \
+  --mode n2n --arch "$ARCH" $CFLAGS \
   --config "$CONFIG" --exp "$EXP" --base_ch 32 --depth 4 \
   --save_every "$SAVE_EVERY" --save_images --log_images 10 \
   --max_steps "$MAX_STEPS" \
   --early_stop_patience 20 --early_stop_min_evals 60 \
   --seed "$SEED" --name "$RUN_NAME" $EXTRA
 
-echo "[baseline] done -> $EXP/logs/run_base_${ARCH}_n2n_seed$SEED"
+echo "[baseline] done -> $EXP/logs/$RUN_NAME"

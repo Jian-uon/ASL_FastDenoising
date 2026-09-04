@@ -98,6 +98,7 @@ PAPER_NAME = {
     "naive_mean":  "Repetition\naveraging",
     "vanilla_N2N": "UNet-N2N",
     "SwinIR_N2N":  "SwinIR-N2N",
+    "UNet_T1concat": "UNet-N2N+T1\n(concat)",
     "asl_keys":    "ASL keys\n(no T1)",
     "proposed":    "Proposed",
 }
@@ -239,7 +240,7 @@ def main():
             m, ect._presubset_pack(pack, nf, args.seed, k, device), 0, device)
     if args.concat:
         m = ect.load_unet(args.concat, args, device)
-        methods["PlainUNet_concat"] = lambda pack, nf, k, m=m: ect.run_unet(
+        methods["UNet_T1concat"] = lambda pack, nf, k, m=m: ect.run_unet(
             m, ect._presubset_pack(pack, nf, args.seed, k, device), 0, device)
     for spec in args.extra_runner:
         label, ckpt, ra = spec.split("::", 2)

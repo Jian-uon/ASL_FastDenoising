@@ -34,6 +34,7 @@ from tqdm import tqdm
 
 from config.conf_data import Config
 from dataio.dataloaders import get_asl_2d_loaders
+from losses.asl_n2n_loss import gradient_l1
 from losses.n2self_loss import j_invariant_l1, make_j_invariant_input
 from models.plain_unet import PlainUNet2D
 from models.swinir_2d import SwinIR2D
@@ -84,6 +85,15 @@ def parse_args():
                         "input (in_ch=2), so T1 flows freely into the value/output path. The "
                         "PlainUNet counterpart of the manuscript A1 (conventional fusion, no "
                         "content guard). T1 is NOT used for the brain mask difference here.")
+    # The baselines carry the same objective as the proposed model, so the margin between
+    # them measures the architecture and the anatomical path rather than the loss. Defaults
+    # match the v35 recipe (w_n2n 0.7, w_grad 0.8); --w_grad 0 restores the plain-L1 runs.
+    p.add_argument("--w_n2n", type=float, default=0.7,
+                   help="Weight on the masked N2N L1 term. Default 0.7, the v35 value.")
+    p.add_argument("--w_grad", type=float, default=0.8,
+                   help="Weight on the gradient L1 term, which preserves edges under a noisy "
+                        "target. Default 0.8, the v35 value; 0 reproduces the plain-L1 "
+                        "baselines trained before 2026-09-04.")
     p.add_argument("--base_ch", type=int, default=32)
     p.add_argument("--depth", type=int, default=4)
     p.add_argument("--skip_dropout", type=float, default=0.3)
@@ -235,6 +245,8 @@ class BaselineRunner:
             "optimizer": self.optimizer.state_dict(),
             "scheduler": self.scheduler.state_dict() if self.scheduler is not None else None,
             "mode": self.args.mode,
+            "w_n2n": float(getattr(self.args, "w_n2n", 0.7)),
+            "w_grad": float(getattr(self.args, "w_grad", 0.8)),
             "arch": self.args.arch,
             "arch_cfg": self.arch_cfg,
         }, self._ckpt(tag))
@@ -272,10 +284,22 @@ class BaselineRunner:
         x_in, target, brain, jmask = self._build_io(pack)
         pred = self._unwrap()(x_in)
         if self.args.mode == "n2self":
-            loss = j_invariant_l1(pred, target, jmask, brain)
+            recon = j_invariant_l1(pred, target, jmask, brain)
         else:
-            loss = _masked_l1(pred, target, brain)
-        return loss, {"loss": float(loss.detach().item())}
+            recon = _masked_l1(pred, target, brain)
+        # Same two terms, same weights, as the proposed model. gradient_l1 is N2N-compatible:
+        # E[grad(noisy target)] = grad(signal) whenever the noise has zero spatial mean, which
+        # is the assumption the reconstruction term already rests on.
+        w_n2n = float(getattr(self.args, "w_n2n", 0.7))
+        w_grad = float(getattr(self.args, "w_grad", 0.8))
+        stats = {"recon": float(recon.detach().item())}
+        loss = w_n2n * recon
+        if w_grad > 0.0:
+            grad = gradient_l1(pred, target, brain)
+            loss = loss + w_grad * grad
+            stats["grad"] = float(grad.detach().item())
+        stats["loss"] = float(loss.detach().item())
+        return loss, stats
 
     @torch.no_grad()
     def _predict_with_ema(self, x: Tensor) -> Tensor:

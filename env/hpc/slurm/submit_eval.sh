@@ -72,14 +72,17 @@ CSW=$(ck run_base_swinir_n2n_seed42)
 # The sweep takes every baseline seed that has a post-hoc checkpoint, so a baseline is
 # averaged over as many runs as the proposed model instead of one. eval_comparison_table
 # labels each by the seed in its path and merge_seeds groups them back.
-VAN=""; SWI=""
+VAN=""; SWI=""; CAT=""
 for s in 42 1 2; do
   _p="$EXP/logs/run_base_plainunet_n2n_seed$s/checkpoints/best_umse_posthoc.pth"
   [ -f "$_p" ] && VAN="$VAN --vanilla $_p"
   _p="$EXP/logs/run_base_swinir_n2n_seed$s/checkpoints/best_umse_posthoc.pth"
   [ -f "$_p" ] && SWI="$SWI --swinir_n2n $_p"
+  # naive-fusion control: the same U-Net fed [mean(setA); T1] as two channels
+  _p="$EXP/logs/run_base_plainunet_t1cat_n2n_seed$s/checkpoints/best_umse_posthoc.pth"
+  [ -f "$_p" ] && CAT="$CAT --concat $_p"
 done
-echo "[eval] baselines: $(echo $VAN | grep -c -o -- --vanilla) PlainUNet, $(echo $SWI | grep -c -o -- --swinir_n2n) SwinIR seeds"
+echo "[eval] baselines: $(echo $VAN | grep -c -o -- --vanilla) PlainUNet, $(echo $SWI | grep -c -o -- --swinir_n2n) SwinIR, $(echo $CAT | grep -c -o -- --concat) T1-concat seeds"
 
 ra() {  # ra <seed> [<levels>] [<key source>] [<extra flags>]
   # Must reproduce what the run was TRAINED with: the checkpoint is loaded into the
@@ -125,7 +128,7 @@ if [ "$PHASE" = all ] || [ "$PHASE" = sweep ]; then
     --extra_runner "'proposed_seed1::$C1::$(ra 1)'" \
     --extra_runner "'proposed_seed2::$C2::$(ra 2)'" \
     $ARMS \
-    $VAN $SWI --include_naive \
+    $VAN $SWI $CAT --include_naive \
     || die "eval_comparison_table.py (sweep)"
 fi
 

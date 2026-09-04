@@ -28,9 +28,10 @@ PAPER_NAME = {
     "naive_mean":  "Repetition averaging",
     "vanilla_N2N": "UNet-N2N",
     "SwinIR_N2N":  "SwinIR-N2N",
+    "UNet_T1concat": "UNet-N2N+T1",
     "proposed":    "Proposed",
 }
-ORDER = ["naive_mean", "vanilla_N2N", "SwinIR_N2N", "proposed"]
+ORDER = ["naive_mean", "vanilla_N2N", "SwinIR_N2N", "UNet_T1concat", "proposed"]
 
 # (per-subject column, header, decimals)
 # White matter is not a column. The coefficient of variation is defined on gray matter by the
