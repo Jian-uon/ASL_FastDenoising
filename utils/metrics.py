@@ -315,13 +315,19 @@ def scov(image: Tensor, mask: Tensor, threshold: float = PV_TISSUE,
 
     For ASL: report on a grey-matter PV mask thresholded at PV_TISSUE to exclude
     partial-volume voxels. Lower = more uniform (less noise / motion).
-    Mutsaerts et al., J Cereb Blood Flow Metab 2017;37(9):3184-3192 — the ASL
-    community standard. (This docstring previously credited a Wang 2003 MRM paper;
-    that attribution was wrong and had been copied into the manuscript.)
+    (This docstring previously credited a Wang 2003 MRM paper; that attribution was
+    wrong and had been copied into the manuscript.)
 
-    Note: scale-invariant w.r.t. linear scaling, so values computed on
-    normalized PWI ≈ values on quantified CBF (modulo percentile clipping
-    nonlinearity, typically <2% difference).
+    Note: scale-invariant under a GLOBAL rescaling, which is why rCBF and CBF give
+    identical values. It is NOT invariant between PWI and CBF: the conversion divides
+    by the M0 MAP, not by a scalar, and M0 is far from uniform at 7T. Measured on the
+    12-repetition average of 24 subjects, GM M0 has a spatial CoV of 0.34, and sCoV on
+    CBF runs 65% above sCoV on the PWI (0.69 -> 1.12 on average, per-subject range -4%
+    to +225%, subject rank correlation only 0.58). This docstring previously claimed the
+    two agreed to within 2%; that assumed the conversion was a linear rescaling and was
+    wrong. Values computed on PWI are therefore NOT comparable with published GM sCoV
+    figures, which are defined on CBF (Mutsaerts et al., J Cereb Blood Flow Metab
+    2017;37(9):3184-3192 — the ASL community standard).
     """
     if image.numel() == 0 or mask.numel() == 0:
         return 0.0
