@@ -35,6 +35,10 @@
 #   go. The directory is kept in git via .gitkeep; `mkdir -p env/hpc/slurm/logs` if in
 #   doubt. (The bare `logs/` rule in .gitignore used to swallow it — fixed 2026-08-26.)
 # Knobs: SEED=1 | MAX_STEPS=500 | EVAL_EVERY=5 | SAVE_EVERY=50 | EXTRA="--resume"
+#        AGG=mean|var|fra            frame aggregation; mean (DEFAULT) averages set A with
+#                                    nothing learnt and tags the run _mean, so it cannot
+#                                    clobber the weighted-aggregator checkpoints
+#        BAD_FRAME_P=0.3             corrupt one set_a frame; default 0 under AGG=mean
 #        WIN_LEVELS=2 WIN_K=t1|asl   window cross-fusion arms A1 / A3 (see below)
 #        W_ANAT=0.03                 T1-reconstruction loss weight; >0 restores the T1
 #                                    decoder head, which is the architecture Figure 1 draws
@@ -79,6 +83,15 @@ STAG=$([ "$T1_TASK" = seg ] && echo "_seg" || echo "")
 # V=ASL-unprojected either way, so the fused output stays a convex combination.
 WIN_LEVELS=${WIN_LEVELS:-0}
 WIN_K=${WIN_K:-t1}
+# Frame aggregation. 'mean' is the reference model since 2026-09-04: set A enters the
+# encoder as a plain average, nothing is learnt, and the paper no longer describes a
+# weighting. 'var' and 'fra' remain so earlier checkpoints still rebuild. Only 'mean'
+# tags the run name, so the runs behind the published numbers keep theirs.
+AGG=${AGG:-mean}
+GTAG=$([ "$AGG" = mean ] && echo "_mean" || echo "")
+# Bad-frame injection existed to force a non-uniform aggregation. A plain mean cannot
+# reject anything, so the corruption would simply be averaged in; off unless asked for.
+BAD_FRAME_P=${BAD_FRAME_P:-0}
 # Free-form tag appended to the run name, for arms that differ only by EXTRA flags
 # (e.g. NAME_SUFFIX=_agguniform EXTRA="--agg_tau_init 0 --freeze_agg_tau").
 NAME_SUFFIX=${NAME_SUFFIX:-}
@@ -107,18 +120,18 @@ fi
 # best-ckpt gate: keep the runner default (best_min_step=-1 -> falls back to
 # sure_anneal_start=200 from the config), same as the local probe.
 
-RUN_NAME=run_v35_joint${STAG}${WTAG}${ATAG}${NAME_SUFFIX}_seed$SEED
+RUN_NAME=run_v35_joint${STAG}${WTAG}${GTAG}${ATAG}${NAME_SUFFIX}_seed$SEED
 . env/hpc/slurm/already_trained.sh
 if [ "${FORCE:-0}" != "1" ] && already_trained "$RUN_NAME" "${MIN_EPOCHS:-200}"; then
   exit 0
 fi
 
-echo "=== [v35_joint] seed=$SEED max_steps=$MAX_STEPS eval_every=$EVAL_EVERY t1_task=$T1_TASK win=${WIN_LEVELS}/${WIN_K} w_anat_roi=${W_ANAT:-config} (FRA + joint T1$STAG, no stage-1) ==="
+echo "=== [v35_joint] seed=$SEED max_steps=$MAX_STEPS eval_every=$EVAL_EVERY t1_task=$T1_TASK win=${WIN_LEVELS}/${WIN_K} agg=$AGG bad_frame_p=$BAD_FRAME_P w_anat_roi=${W_ANAT:-config} (joint T1$STAG, no stage-1) ==="
 yhrun torchrun --nnodes=1 --nproc_per_node=1 --master_port="$MASTER_PORT" $RUNNER \
   --config "$CONFIG" --exp "$EXP" --base_ch 32 --depth 4 \
   --use_t1_cross_fusion --t1_attn_max_tokens 1024 --t1_task $T1_TASK \
-  --premask_asl_inputs \
-  --bad_frame_p 0.3 --save_every "$SAVE_EVERY" --save_images --log_images 10 \
+  --premask_asl_inputs --aggregator "$AGG" \
+  --bad_frame_p "$BAD_FRAME_P" --save_every "$SAVE_EVERY" --save_images --log_images 10 \
   --max_steps "$MAX_STEPS" --eval_every "$EVAL_EVERY" \
   --early_stop_patience 20 --early_stop_min_evals 60 \
   --best_criterion umse --save_per_metric_best \

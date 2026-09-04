@@ -670,18 +670,17 @@ def parse_args():
                         "used for --init_t1_from. 'recon' = T1 autoencoder (1-ch head, "
                         "appearance features, DEFAULT); 'seg' = 4-class PV segmentation. "
                         "Sizes the frozen t1_decoder head so it loads strict.")
-    # DEFAULT is 'var' for new runs, but ASLT1Denoiser's kwarg default stays 'fra' so a
-    # pre-2026-08-26 checkpoint (whose stored arch has no `aggregator` key) still rebuilds
-    # with the transformer aggregator its weights belong to and loads strict.
-    p.add_argument("--aggregator", type=str, default="var", choices=["fra", "var"],
-                   help="Frame aggregator. 'var' (DEFAULT) = VarianceFrameAggregator: "
+    # DEFAULT is 'mean' since 2026-09-04: set A enters the encoder as a plain average and
+    # no frame weighting is learnt or claimed. 'var' and 'fra' stay selectable so every
+    # checkpoint written before that date still rebuilds from its stored arch and loads
+    # strict -- they are not the reference model.
+    p.add_argument("--aggregator", type=str, default="mean", choices=["mean", "fra", "var"],
+                   help="Frame aggregator. 'mean' (DEFAULT) = plain parameter-free average "
+                        "over the valid frames of set A. 'var' = VarianceFrameAggregator: "
                         "BLUE weighting computed in closed form from the per-frame variance, "
                         "one learnable tau. 'fra' = the old FrameReliabilityAggregator "
-                        "(per-frame CNN + 2-layer Transformer + log-var head, 86K params), "
-                        "kept for the ablation. Probes show FRA learns exactly 'veto the bad "
-                        "frame, 1/N on the rest'; measured on real frames against a trained "
-                        "FRA, the closed form reproduces it (w_bad 0.004 vs 0.000 at sigma=1.5, "
-                        "0.001 vs 0.000 at sigma=3.0; uniform would be 0.125).")
+                        "(per-frame CNN + 2-layer Transformer + log-var head, 86K params). "
+                        "The latter two are retained for loading earlier checkpoints.")
     p.add_argument("--agg_tau_init", type=float, default=1.0,
                    help="Initial tau for --aggregator var. tau=1 is exact BLUE (weight "
                         "proportional to 1/variance); tau near 0 degenerates to the plain "
@@ -758,9 +757,12 @@ def parse_args():
                         "(len_a+len_b) is below this, so each disjoint half has >=2 "
                         "frames. Default 4.")
 
-    # Bad-frame injection (forces aggregator to learn non-uniform weights)
-    p.add_argument("--bad_frame_p", type=float, default=0.3,
-                   help="Per-step probability of corrupting one frame in setA")
+    # Bad-frame injection. Its purpose was to force the aggregator to learn non-uniform
+    # weights; under --aggregator mean nothing can down-weight the corrupted frame, which
+    # then just lands in the average, so the default is off.
+    p.add_argument("--bad_frame_p", type=float, default=0.0,
+                   help="Per-step probability of corrupting one frame in setA. Default 0. "
+                        "Only meaningful with --aggregator fra or var, which can reject it.")
     p.add_argument("--bad_frame_noise_min", type=float, default=1.5)
     p.add_argument("--bad_frame_noise_max", type=float, default=3.0)
 
@@ -1311,7 +1313,7 @@ class Runner:
             window_heads=int(getattr(args, "window_heads", 4)),
             window_gate_init=float(getattr(args, "window_gate_init", -3.0)),
             window_k_source=str(getattr(args, "window_k_source", "t1")),
-            aggregator=str(getattr(args, "aggregator", "fra")),
+            aggregator=str(getattr(args, "aggregator", "mean")),
             agg_tau_init=float(getattr(args, "agg_tau_init", 1.0)),
             agg_learn_tau=not bool(getattr(args, "freeze_agg_tau", False)),
             zero_t1=bool(getattr(args, "zero_t1", False)),

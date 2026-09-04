@@ -547,6 +547,39 @@ class FrameReliabilityAggregator(nn.Module):
         return agg, weights
 
 
+class MeanFrameAggregator(nn.Module):
+    """Plain mean over the valid frames — no parameters, nothing learnt (2026-09-04 default).
+
+    Set A enters the encoder as ``mean_t(frames)`` and nothing else. The weights returned are
+    uniform over the valid frames, so every downstream consumer (the aggregator probes, the
+    training logs, ``aggregate_asl``) keeps working on the same ``(agg, weights)`` interface.
+
+    **Why the weighting went away.** :class:`VarianceFrameAggregator` reduced FRA's 86K
+    parameters to one learnable tau, and its own docstring records that tau -> 0 *is* this
+    module. Reporting a weighted mean obliges the paper to describe and defend the weighting;
+    a plain mean is what a reader assumes when the paper says the frames are combined, and it
+    removes the last place where a claim about frame reliability could be made without a
+    measurement to support it.
+
+    :class:`VarianceFrameAggregator` and :class:`FrameReliabilityAggregator` are kept below
+    because every checkpoint replays its stored ``arch`` through ``ASLT1Denoiser(**arch)``;
+    dropping them would make the checkpoints behind the current results unloadable.
+    """
+
+    def forward(
+        self,
+        frames: Tensor,
+        lengths: Optional[Tensor] = None,
+        mask: Optional[Tensor] = None,
+    ) -> Tuple[Tensor, Tensor]:
+        if frames.ndim != 5:
+            raise ValueError(f"Expected [B,T,C,H,W], got {tuple(frames.shape)}")
+        valid = VarianceFrameAggregator._valid_mask(frames, lengths, mask)   # [B,T]
+        w = valid / valid.sum(dim=1, keepdim=True).clamp_min(1.0)
+        agg = (frames * w[:, :, None, None, None]).sum(dim=1)                # [B,C,H,W]
+        return agg, w
+
+
 class VarianceFrameAggregator(nn.Module):
     """Closed-form robust BLUE frame aggregation — 1 parameter instead of FRA's 86K.
 

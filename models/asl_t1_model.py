@@ -15,6 +15,7 @@ try:
         ConvEncoder2D,
         CrossModalFusion,
         NAFDecoder,
+        MeanFrameAggregator,
         SetTransformerAggregator,
         SpatialVaryingFrameWeighting,
         T1GuidedCoarseHead,
@@ -28,6 +29,7 @@ except Exception:
         ConvEncoder2D,
         CrossModalFusion,
         NAFDecoder,
+        MeanFrameAggregator,
         SetTransformerAggregator,
         SpatialVaryingFrameWeighting,
         T1GuidedCoarseHead,
@@ -349,11 +351,12 @@ class ASLT1Denoiser(nn.Module):
         window_heads: int = 4,
         window_gate_init: float = -3.0,
         window_k_source: str = "t1",   # 't1' = anatomy-grouped; 'asl' = T1-free control
-        # 2026-08-26 frame aggregator: 'fra' = the 86K-param FrameReliabilityAggregator
-        # (default, unchanged); 'var' = VarianceFrameAggregator, the closed-form robust
-        # BLUE mean with a single learnable tau. Probes showed FRA's learnt policy is
-        # "veto the bad frame, 1/N on the rest", which the closed form reproduces.
-        aggregator: str = "fra",
+        # 2026-09-04 frame aggregator: 'mean' (DEFAULT) = MeanFrameAggregator, a plain
+        # parameter-free mean over set A. 'var' = VarianceFrameAggregator, the closed-form
+        # robust BLUE mean with one learnable tau; 'fra' = the 86K-param
+        # FrameReliabilityAggregator. The latter two are retained so checkpoints written
+        # before 2026-09-04 still rebuild -- they are not the reference model.
+        aggregator: str = "mean",
         agg_tau_init: float = 1.0,
         agg_learn_tau: bool = True,   # False + agg_tau_init=0 => the frozen uniform mean
         **_kwargs,  # absorbs deprecated args
@@ -436,14 +439,16 @@ class ASLT1Denoiser(nn.Module):
         # Frame aggregation. v37+ default = SpatialVaryingFrameWeighting (per-pixel
         # BLUE). Earlier versions = SetTransformerAggregator (per-frame scalar).
         self.aggregator_kind = str(aggregator)
-        if self.aggregator_kind not in ("fra", "var"):
-            raise ValueError(f"aggregator must be 'fra' or 'var', got {aggregator!r}")
+        if self.aggregator_kind not in ("mean", "fra", "var"):
+            raise ValueError(f"aggregator must be 'mean', 'fra' or 'var', got {aggregator!r}")
         if bool(use_svfw) and self.aggregator_kind != "fra":
-            raise ValueError("use_svfw (per-pixel weighting) and aggregator='var' are mutually "
-                             "exclusive; SVFW was dropped on evidence -- see "
-                             "docs/archive/history/v42i_drop_svfw.md.")
+            raise ValueError("use_svfw (per-pixel weighting) needs aggregator='fra'; it is "
+                             "mutually exclusive with 'mean' and 'var'. SVFW was dropped on "
+                             "evidence -- see docs/archive/history/v42i_drop_svfw.md.")
         if bool(use_svfw):
             self.aggregator = SpatialVaryingFrameWeighting(in_ch=asl_in_ch, hidden=32)
+        elif self.aggregator_kind == "mean":
+            self.aggregator = MeanFrameAggregator()
         elif self.aggregator_kind == "var":
             self.aggregator = VarianceFrameAggregator(tau_init=float(agg_tau_init),
                                                       learn_tau=bool(agg_learn_tau))
