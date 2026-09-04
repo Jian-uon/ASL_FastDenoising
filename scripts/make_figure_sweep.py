@@ -46,7 +46,10 @@ PAPER_NAME = {
     "UNet_T1concat": "UNet-N2N+T1",
     "proposed":    "Proposed",
 }
-ORDER = ["naive_mean", "vanilla_N2N", "SwinIR_N2N", "UNet_T1concat", "proposed"]
+# UNet_T1concat is trained and scored, and its numbers land in the sweep CSVs; it is held
+# out of ORDER until there is a decision to report it. Its display name, colour and marker
+# are kept above, so putting it back is one word.
+ORDER = ["naive_mean", "vanilla_N2N", "SwinIR_N2N", "proposed"]
 COLORS = {"naive_mean": "#b0b0b0", "vanilla_N2N": "#7fb3d5",
           "SwinIR_N2N": "#f0b27a", "UNet_T1concat": "#7d3c98", "proposed": "#c0392b"}
 MARKERS = {"naive_mean": "s", "vanilla_N2N": "^", "SwinIR_N2N": "D",

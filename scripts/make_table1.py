@@ -31,7 +31,10 @@ PAPER_NAME = {
     "UNet_T1concat": "UNet-N2N+T1",
     "proposed":    "Proposed",
 }
-ORDER = ["naive_mean", "vanilla_N2N", "SwinIR_N2N", "UNet_T1concat", "proposed"]
+# UNet_T1concat is trained and scored, and its numbers land in the sweep CSVs; it is held
+# out of ORDER until there is a decision to report it. Its display name, colour and marker
+# are kept above, so putting it back is one word.
+ORDER = ["naive_mean", "vanilla_N2N", "SwinIR_N2N", "proposed"]
 
 # (per-subject column, header, decimals)
 # White matter is not a column. The coefficient of variation is defined on gray matter by the
