@@ -164,8 +164,9 @@ def main() -> int:
 
     lo, hi = min(a.ks), max(a.ks)
     span = ("%d to %d" % (lo, hi)) if sorted(a.ks) == list(range(lo, hi + 1)) else ktxt
-    fig.suptitle("Per-subject distributions over %s repetitions (test set, n=%d)"
-                 % (span, len(subs)), fontsize=12)
+    # The subject count belongs to the text, which states it once; repeating it on every
+    # panel title made the figures carry a second, unexplained n.
+    fig.suptitle("Per-subject distributions over %s repetitions" % span, fontsize=12)
     # Legend after tight_layout, into the strip tight_layout was told to leave free; adding it
     # first puts it inside the axes, because tight_layout then lays the panels out over it.
     fig.tight_layout(rect=(0, 0.10, 1, 0.96))
