@@ -10,10 +10,13 @@
 # WHY THIS EXISTS
 #   The in-loop best is step-gated (`best_min_step` falls back to
 #   sure_anneal_start=200), so an earlier global optimum can be missed, and the
-#   two baselines are worse off than that: train_baseline.py:389 saves `best`
-#   and early-stops on `psnr_ref`, which CLAUDE.md §4 forbids for selection.
-#   Every method in Table 1 must therefore be re-selected here, under ONE rule:
-#   global argmin pooled validation uMSE over the periodic snapshots.
+#   in-loop criteria differ between the runners: the main runner tracks
+#   --best_criterion (umse), train_baseline.py tracks validation l1_B. Neither
+#   uses the 12-repetition average any more (the baselines stopped on psnr_ref
+#   until 2026-09-04), but they are still two different rules, and the operating
+#   point every method is REPORTED at has to come from one. Re-selected here
+#   under a single rule: global argmin pooled validation uMSE over the periodic
+#   snapshots.
 #
 #   Two selectors, because eval_select_ckpt.py rebuilds the MAIN runner and
 #   cannot load a train_baseline.py checkpoint:
