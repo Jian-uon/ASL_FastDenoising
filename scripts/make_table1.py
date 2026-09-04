@@ -64,7 +64,7 @@ def main() -> int:
     p = argparse.ArgumentParser("Table 1: methods under the selection condition")
     p.add_argument("--dir", required=True, help="medphys_eval directory (holds sweep/)")
     p.add_argument("--ks", type=int, nargs="+", default=[3, 4, 5, 6],
-                   help="acquisition lengths to average over. Default 3 4 5 6 = the range "
+                   help="repetition counts to average over. Default 3 4 5 6 = the range "
                         "validation draws set A from, so the table is the condition the "
                         "checkpoints were selected under.")
     p.add_argument("--out", default=None)

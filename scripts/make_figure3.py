@@ -73,7 +73,7 @@ def load(path, ks, fidelity):
     """-> {method: {subject: {metric: value}}}, each measure averaged over `ks`.
 
     `ks` is the range validation draws set A from, so every panel describes the model at the
-    acquisition lengths its checkpoint was selected over. A subject contributes a value only
+    repetition counts its checkpoint was selected over. A subject contributes a value only
     if it has one at every length, so no measure is averaged over a different set than
     another. uPSNR is taken from the averaged uMSE, since decibels do not average.
     """
@@ -129,7 +129,7 @@ def main() -> int:
     p = argparse.ArgumentParser("assemble the per-subject distribution figure")
     p.add_argument("--dir", required=True)
     p.add_argument("--ks", type=int, nargs="+", default=[3, 4, 5, 6],
-                   help="acquisition lengths every panel averages over. Default 3 4 5 6 = the "
+                   help="repetition counts every panel averages over. Default 3 4 5 6 = the "
                         "range validation draws set A from, matching Table 1's uMSE.")
     p.add_argument("--fidelity", choices=["umse", "upsnr"], default="umse")
     p.add_argument("--out", default=None)

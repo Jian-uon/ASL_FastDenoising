@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Performance against acquisition length, which Table 1 no longer carries.
+"""Performance against repetition count, which Table 1 no longer carries.
 
 Table 1 compares the methods under one condition. The paper's other claim is about the
 acquisition axis -- that reconstruction quality barely depends on how many repetitions enter
@@ -92,10 +92,10 @@ def load(path):
 
 
 def main() -> int:
-    p = argparse.ArgumentParser("performance against acquisition length")
+    p = argparse.ArgumentParser("performance against repetition count")
     p.add_argument("--dir", required=True)
     p.add_argument("--full_k", type=int, default=12,
-                   help="acquisition length of the reference protocol")
+                   help="repetition count of the reference protocol")
     p.add_argument("--out", default=None)
     p.add_argument("--dpi", type=int, default=600)
     a = p.parse_args()
@@ -133,7 +133,7 @@ def main() -> int:
     h, l = axes[0].get_legend_handles_labels()
     fig.legend(h, l, loc="lower center", ncol=len(methods), frameon=False, fontsize=9,
                bbox_to_anchor=(0.5, -0.01))
-    fig.suptitle("Performance against acquisition length", fontsize=12)
+    fig.suptitle("Performance against repetition count", fontsize=12)
     fig.tight_layout(rect=(0, 0.06, 1, 0.94))
 
     out = a.out or os.path.join(a.dir, "figures", "Figure_sweep.png")

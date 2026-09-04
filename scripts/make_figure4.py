@@ -7,7 +7,7 @@ repetitions and ending at the full acquisition. Three subjects rather than one, 
 single example cannot show whether the result is typical. Every panel shares one colour scale,
 so panels are comparable to each other rather than each stretched to its own range.
 
-Bottom: the agreement statistics against acquisition length. Bland-Altman was dropped from
+Bottom: the agreement statistics against repetition count. Bland-Altman was dropped from
 the analysis -- only the bias was ever reported, and ICC(2,1) is an absolute-agreement
 coefficient that already charges a systematic shift against the reconstruction.
 
