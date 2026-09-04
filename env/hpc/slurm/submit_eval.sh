@@ -58,14 +58,21 @@ K_CBF=${K_CBF:-"2 4 6 8 10"}  # rCBF needs no held-out frames, so it runs past t
 DATA_ROOT=${DATA_ROOT:-/fs1/home/duancaohui/jian/data/7T_ASL_denoising}
 mkdir -p "$OUT"
 
+# submit_v35_joint.sh tags a run _mean when it was trained with the plain average, which is
+# the default since 2026-09-04. The eval has to look for the same names, and has to rebuild
+# the same architecture: the checkpoint is loaded into whatever --aggregator builds, and a
+# mismatch fails to load. AGG=var or AGG=fra scores the older runs.
+AGG=${AGG:-mean}
+GTAG=$([ "$AGG" = mean ] && echo "_mean" || echo "")
+
 die() { echo "[eval] FAILED at: $*" >&2; exit 1; }
 ck()  { p="$EXP/logs/$1/checkpoints/best_umse_posthoc.pth"
         [ -f "$p" ] || die "$1 has no best_umse_posthoc.pth — run submit_select.sh first"
         echo "$p"; }
 
-C42=$(ck run_v35_joint_win2t1_seed42)
-C1=$(ck  run_v35_joint_win2t1_seed1)
-C2=$(ck  run_v35_joint_win2t1_seed2)
+C42=$(ck run_v35_joint_win2t1${GTAG}_seed42)
+C1=$(ck  run_v35_joint_win2t1${GTAG}_seed1)
+C2=$(ck  run_v35_joint_win2t1${GTAG}_seed2)
 CPU=$(ck run_base_plainunet_n2n_seed42)   # seed 42 alone, for the montage
 CSW=$(ck run_base_swinir_n2n_seed42)
 
@@ -91,7 +98,7 @@ ra() {  # ra <seed> [<levels>] [<key source>] [<extra flags>]
   _s=$1; _lv=${2:-2}; _ks=${3:-t1}; _ex=${4:-}
   echo "--config $CONFIG --exp $EXP --name v35_eval_tmp --base_ch 32 --depth 4 \
 --use_t1_cross_fusion --t1_attn_max_tokens 1024 --t1_task recon --premask_asl_inputs \
---window_fusion_levels $_lv --window_k_source $_ks --best_criterion umse --seed $_s $_ex"
+--window_fusion_levels $_lv --window_k_source $_ks --aggregator $AGG --best_criterion umse --seed $_s $_ex"
 }
 
 # Ablation arms, added when their post-hoc checkpoint exists. They finish at different
@@ -108,10 +115,10 @@ add_arm() {   # add_arm <label> <run name> <runner args>
 }
 
 for s in 42 1 2; do
-  add_arm "A3_aslkeys_seed$s" "run_v35_joint_win2asl_seed$s" "$(ra $s 2 asl)"
+  add_arm "A3_aslkeys_seed$s" "run_v35_joint_win2asl${GTAG}_seed$s" "$(ra $s 2 asl)"
 done
 for s in 42 1 2; do
-  add_arm "A0_nowindow_seed$s" "run_v35_joint_seed$s" "$(ra $s 0 t1)"
+  add_arm "A0_nowindow_seed$s" "run_v35_joint${GTAG}_seed$s" "$(ra $s 0 t1)"
 done
 for s in 42 1 2; do
   add_arm "AGG_uniform_seed$s" "run_v35_joint_win2t1_agguniform_seed$s" \
@@ -157,7 +164,7 @@ if [ "$PHASE" = all ] || [ "$PHASE" = panel ]; then
   # anatomical input alone, so it is the arm whose images say what T1 changes; the sweep has
   # carried its numbers all along. Added only when its checkpoint exists, as in the sweep.
   PANEL_ARMS=""
-  _p="$EXP/logs/run_v35_joint_win2asl_seed42/checkpoints/best_umse_posthoc.pth"
+  _p="$EXP/logs/run_v35_joint_win2asl${GTAG}_seed42/checkpoints/best_umse_posthoc.pth"
   if [ -f "$_p" ]; then
     PANEL_ARMS="--extra_runner 'asl_keys::$_p::$(ra 42 2 asl)'"
     echo "[eval] panel + asl_keys (A3)"
