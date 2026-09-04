@@ -225,7 +225,9 @@ class BaselineRunner:
         st = torch.load(latest, map_location=self.device)
         self.model.load_state_dict(st["model"])
         self.global_step = st.get("step", 0)
-        self.best_val = st.get("best_val", float("inf"))
+        # best_val is maximized and initialised to -inf; a +inf fallback here would make a
+        # resumed run reject every later evaluation and never write a new "best".
+        self.best_val = st.get("best_val", -float("inf"))
         if "optimizer" in st:
             self.optimizer.load_state_dict(st["optimizer"])
         if "ema" in st:
@@ -410,25 +412,32 @@ class BaselineRunner:
 
                 self.eval_count += 1
                 patience = int(self.args.early_stop_patience)
-                if psnr_ref > self.best_val:
-                    self.best_val = psnr_ref
+                # Tracked on l1_B, the loss against the disjoint noisy target, which is what the
+                # proposed model's loop uses. psnr_ref is PSNR against the 12-repetition average:
+                # it peaks early and then falls as the reconstruction stops mimicking that
+                # average's noise, so selecting or stopping on it rewards noise mimicry and halts
+                # the baselines on a criterion the proposed model is not subject to. Both are
+                # still logged; only psnr_ref's role in the decisions is gone.
+                score = -l1_b
+                if score > self.best_val:
+                    self.best_val = score
                     self.no_improve_count = 0
                     self._save("best")
-                    logging.info(f"[BEST] step={self.global_step} psnr_ref={psnr_ref:.2f} | "
-                                 f"l1_B={l1_b:.4f} ssim_ref={ssim_ref:.4f}")
+                    logging.info(f"[BEST] step={self.global_step} l1_B={l1_b:.4f} | "
+                                 f"psnr_ref={psnr_ref:.2f} ssim_ref={ssim_ref:.4f}")
                 else:
                     self.no_improve_count += 1
-                    tail = f" (best {self.best_val:.2f}"
+                    tail = f" (best l1_B {-self.best_val:.4f}"
                     if patience > 0:
                         tail += f", no-improve {self.no_improve_count}/{patience}"
                     tail += ")"
-                    logging.info(f"[VAL ] step={self.global_step} psnr_ref={psnr_ref:.2f} | "
-                                 f"l1_B={l1_b:.4f} ssim_ref={ssim_ref:.4f}{tail}")
+                    logging.info(f"[VAL ] step={self.global_step} l1_B={l1_b:.4f} | "
+                                 f"psnr_ref={psnr_ref:.2f} ssim_ref={ssim_ref:.4f}{tail}")
 
                 if (patience > 0
                     and self.eval_count >= int(self.args.early_stop_min_evals)
                     and self.no_improve_count >= patience):
-                    logging.info(f"[EARLY STOP] step={self.global_step}, best psnr_ref={self.best_val:.4f}")
+                    logging.info(f"[EARLY STOP] step={self.global_step}, best l1_B={-self.best_val:.4f}")
                     break
 
             if self.global_step >= max_steps:
