@@ -46,15 +46,19 @@ asl_denoiser_train_params:
   # Loss recipe inherited unchanged from v35e (see win_asl_2d_home_v35.yml for
   # the full rationale comments): masked-input regime (no w_bg), lambda_cos off,
   # contrast + interior-masked TV on, |SURE| with warmup/anneal.
+  # 2026-09-04: the objective is N2N + gradient and nothing else. w_ssim, w_tv and w_sure
+  # were active and were neither described in the manuscript nor drawn in Figure 1, and
+  # the baselines could not carry them, which left the comparison confounded by the loss.
+  # Zeroed here rather than deleted so the earlier recipe stays recoverable.
   w_n2n: 0.7
   w_grad: 0.8
-  w_ssim: 0.2
+  w_ssim: 0.0
   w_contrast: 0.5
-  w_tv: 0.2
+  w_tv: 0.0
   lambda_cos: 0.0
   w_anat_roi: 0.0
   w_seg: 1.0
-  w_sure: 0.02
+  w_sure: 0.0
   sure_eps: 1.0e-3
   sure_warmup_steps: 60
   sure_anneal_start: 200
