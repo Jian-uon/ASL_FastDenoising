@@ -28,6 +28,10 @@ class DatasetGenerator:
                 'gm':       os.path.join(raw_dir, 'gm_asl.nii.gz'),
                 'wm':       os.path.join(raw_dir, 'wm_asl.nii.gz'),
                 'csf':      os.path.join(raw_dir, 'csf_asl.nii.gz'),
+                # M0 is needed at evaluation only, to put sCoV on the CBF scale: the
+                # quantification divides by the M0 MAP, and dividing by a spatially
+                # varying field is not a rescaling, so sCoV on dM and on CBF differ.
+                'm0':       os.path.join(raw_dir, 'm0.nii.gz'),
                 'subject_id': sid,
             }
             missing = [k for k, v in paths.items() if k != 'subject_id' and not os.path.exists(v)]

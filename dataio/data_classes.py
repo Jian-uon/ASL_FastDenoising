@@ -26,18 +26,22 @@ def get_pre_asl_transform(asl_hw: int = 128,
     """把 [H,W,Z,T] 的 ASL 差分转为 [T,H,W,Z]，并与 T1 对齐到统一体素。
     Also loads GM/WM/CSF partial volume maps in ASL space for multi-task supervision."""
     pv_keys = ["gm", "wm", "csf"]
-    img_keys = ["asl_diff", "t1"] + pv_keys
+    # m0 rides the same pad/crop as t1 and the PV maps, which is what keeps it voxel-aligned
+    # with the reconstruction; it is left on its own intensity scale (no percentile rescale),
+    # since sCoV on CBF only needs the ratio dM/M0 and is invariant to M0's global scale.
+    aux_keys = pv_keys + ["m0"]
+    img_keys = ["asl_diff", "t1"] + aux_keys
     tf = [
         LoadImaged(keys=img_keys, reader=NibabelReader(), image_only=False),
         EnsureChannelFirstd(keys=["asl_diff"], channel_dim=-1),   # [H,W,Z,T] -> [T,H,W,Z]
-        EnsureChannelFirstd(keys=["t1"] + pv_keys),                # [H,W,Z] -> [1,H,W,Z]
+        EnsureChannelFirstd(keys=["t1"] + aux_keys),               # [H,W,Z] -> [1,H,W,Z]
         EnsureTyped(keys=img_keys, track_meta=True),
         Orientationd(keys=img_keys, axcodes="LPS"),
         # Native data is (96, 112, 52). Trilinear resize to 128 introduces a periodic
         # interpolation alias (栅格 ~3-4 px period) visible in noisy frames and their means.
         # Use pad-or-crop instead: zero-pad H 96→128, W 112→128; center-crop Z 52→48.
         ResizeWithPadOrCropd(keys=["asl_diff"], spatial_size=(asl_hw, asl_hw, asl_z)),
-        ResizeWithPadOrCropd(keys=["t1"] + pv_keys, spatial_size=(t1_hw, t1_hw, t1_z)),
+        ResizeWithPadOrCropd(keys=["t1"] + aux_keys, spatial_size=(t1_hw, t1_hw, t1_z)),
     ]
     if intensity == "percentile":
         # T1 is a fixed anatomical volume → per-volume percentile is fine (no A/B leak).
@@ -157,6 +161,7 @@ class ASLTwoSetDataset2DFlat(Dataset):
         gm  = item["gm"][:, :, :, z]          # [1,H,W]
         wm  = item["wm"][:, :, :, z]          # [1,H,W]
         csf = item["csf"][:, :, :, z]         # [1,H,W]
+        m0  = item["m0"][:, :, :, z]          # [1,H,W] — raw scale, evaluation only
 
         ctx = self.slice_context
         if ctx > 0:                            # 2.5D: z-window (edge-clamped) → [T,K,H,W]
@@ -195,6 +200,10 @@ class ASLTwoSetDataset2DFlat(Dataset):
             "gm":  gm.contiguous(),
             "wm":  wm.contiguous(),
             "csf": csf.contiguous(),
+            # Left out of every loss and out of the model input. sCoV is reported on the
+            # CBF scale, and CBF is proportional to dM/M0 voxel-wise; the proportionality
+            # constant drops out of a std/mean ratio, so the raw map is all that is needed.
+            "m0": m0.contiguous(),
             # stable per-subject grouping key (base-subject index within this split);
             # surfaced so eval can aggregate the statistical unit at SUBJECT level.
             "subject_id": int(si),

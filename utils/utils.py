@@ -32,7 +32,7 @@ def collate_varlen(batch: List[Dict]) -> Dict[str, torch.Tensor]:
     输出：
       'setA' [B,TAmax,1,H,W], 'maskA' [B,TAmax]
       'setB' [B,TBmax,1,H,W], 'maskB' [B,TBmax]
-      't1' [B,1,H,W]; 'gm','wm','csf' [B,1,H,W] when present
+      't1' [B,1,H,W]; 'gm','wm','csf','m0' [B,1,H,W] when present
     """
     setA_list, setB_list, t1_list = [], [], []
     extras: Dict[str, list] = {}
@@ -41,7 +41,7 @@ def collate_varlen(batch: List[Dict]) -> Dict[str, torch.Tensor]:
         setA_list.append(it["setA"])
         setB_list.append(it["setB"])
         t1_list.append(it["t1"])
-        for k in ("gm", "wm", "csf"):
+        for k in ("gm", "wm", "csf", "m0"):
             if k in it:
                 extras.setdefault(k, []).append(it[k])
         if "subject_id" in it:
