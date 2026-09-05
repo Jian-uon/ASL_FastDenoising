@@ -235,11 +235,14 @@ def main():
     args = ap.parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
 
-    params = dict(ref_arm=args.ref_arm,
-                  pld=args.pld, ld=args.ld, t1_blood=args.t1_blood, lam=0.9,
+    # Kinetic parameters only: params is splatted into dm_to_cbf, which takes the single-
+    # compartment arguments and nothing else. ref_arm selects which arm the agreement is
+    # measured against and is read from args wherever it is needed; it lived here for the
+    # provenance record alone and made every call to dm_to_cbf raise on an unexpected keyword.
+    params = dict(pld=args.pld, ld=args.ld, t1_blood=args.t1_blood, lam=0.9,
                   alpha=net_alpha(args.alpha_label, 0.93, args.n_bs))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"[device] {device}  params={params}")
+    print(f"[device] {device}  ref_arm={args.ref_arm}  params={params}")
     model, cfg = build_model(args.runner_args, args.config, device, slice_context=args.slice_context)
     ok = load_ema(model, args.checkpoint, device)
     van = None
@@ -417,7 +420,8 @@ def main():
                           else f"{r.get(h, float('nan')):>13.3f}") for h in hdr))
 
     with open(os.path.join(args.out_dir, "cbf_eval.json"), "w") as f:
-        json.dump({"params": params, "ref_frames": ref_n, "summary": summary, "rows": rows}, f, indent=2)
+        json.dump({"params": params, "ref_arm": args.ref_arm, "ref_frames": ref_n,
+                   "summary": summary, "rows": rows}, f, indent=2)
     _degradation_plot(summary, os.path.join(args.out_dir, "degradation_all_metrics.png"))
     print(f"[done] wrote {os.path.join(args.out_dir, 'cbf_eval.json')}  ({len(rows)} rows)")
 
