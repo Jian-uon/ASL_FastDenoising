@@ -134,10 +134,12 @@ done
 for s in 42 1 2; do
   add_arm "A0_nowindow_seed$s" "run_v35_joint${GTAG}_seed$s" "$(ra $s 0 t1)"
 done
-for s in 42 1 2; do
-  add_arm "AGG_uniform_seed$s" "run_v35_joint_win2t1_agguniform_seed$s" \
-          "$(ra $s 2 t1 '--agg_tau_init 0 --freeze_agg_tau')"
-done
+# The AGG_uniform arm (var aggregator, tau frozen at 0) was retired here on 2026-09-05. The
+# model takes the plain average of the k frames since the aggregator was removed, so the arm
+# cannot be produced any more -- and its old checkpoints are still on disk with a
+# best_umse_posthoc.pth from an earlier globbing select run. add_arm found one and handed it to
+# a runner built with --aggregator mean, which failed the strict load on the unexpected key
+# "aggregator.tau". Do not add this arm back without also passing --aggregator var for it.
 
 if [ "$PHASE" = all ] || [ "$PHASE" = sweep ]; then
   echo "=== [eval] sweep: split=$SPLIT k in {$KS}"
