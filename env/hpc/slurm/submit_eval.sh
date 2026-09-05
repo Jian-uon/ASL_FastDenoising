@@ -71,10 +71,12 @@ ck()  { p="$EXP/logs/$1/checkpoints/best_umse_posthoc.pth"
         echo "$p"; }
 
 C42=$(ck run_v35_joint_win2t1${GTAG}_seed42)
-C1=$(ck  run_v35_joint_win2t1${GTAG}_seed1)
-C2=$(ck  run_v35_joint_win2t1${GTAG}_seed2)
 CPU=$(ck run_base_plainunet_n2n_seed42)   # seed 42 alone, for the montage
 CSW=$(ck run_base_swinir_n2n_seed42)
+# Seeds beyond 42 are OPTIONAL, and were required here until 2026-09-05. Every other repeat in
+# this script is added only when its post-hoc checkpoint exists (baselines below, ablation arms
+# further down); the proposed model was the one exception, so a seed-42 matrix could not be
+# evaluated at all. Seeds 1 and 2 are now collected the same way, in SEEDARMS after ra() exists.
 
 # The sweep takes every baseline seed that has a post-hoc checkpoint, so a baseline is
 # averaged over as many runs as the proposed model instead of one. eval_comparison_table
@@ -100,6 +102,18 @@ ra() {  # ra <seed> [<levels>] [<key source>] [<extra flags>]
 --use_t1_cross_fusion --t1_attn_max_tokens 1024 --t1_task recon --premask_asl_inputs \
 --window_fusion_levels $_lv --window_k_source $_ks --aggregator $AGG --best_criterion umse --seed $_s $_ex"
 }
+
+# Further seeds of the proposed model, on the same terms as everything else: present or skipped.
+SEEDARMS=""
+for s in 1 2; do
+  _p="$EXP/logs/run_v35_joint_win2t1${GTAG}_seed$s/checkpoints/best_umse_posthoc.pth"
+  if [ -f "$_p" ]; then
+    SEEDARMS="$SEEDARMS --extra_runner 'proposed_seed$s::$_p::$(ra $s)'"
+    echo "[eval] + proposed_seed$s"
+  else
+    echo "[eval] - proposed_seed$s  (no best_umse_posthoc.pth yet, skipped)"
+  fi
+done
 
 # Ablation arms, added when their post-hoc checkpoint exists. They finish at different
 # times, and a sweep covering the arms that are ready beats one that refuses to start.
@@ -132,8 +146,7 @@ if [ "$PHASE" = all ] || [ "$PHASE" = sweep ]; then
     --config "$CONFIG" --split "$SPLIT" --seed 42 --slice_context 0 \
     --n_frames $KS --out_dir "$OUT/sweep" \
     --ours "$C42" --ours_runner_args "'$(ra 42)'" --ours_label proposed_seed42 \
-    --extra_runner "'proposed_seed1::$C1::$(ra 1)'" \
-    --extra_runner "'proposed_seed2::$C2::$(ra 2)'" \
+    $SEEDARMS \
     $ARMS \
     $VAN $SWI $CAT --include_naive \
     || die "eval_comparison_table.py (sweep)"
